@@ -1,0 +1,213 @@
+---
+title: "Spanish Stress-Suffix Associations: Behavioral Results"
+author: "Kaylee Fernandez"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    self_contained: true
+    theme: cosmo
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    df_print: paged
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 150
+)
+
+# Source the analysis script. This loads packages, defines functions,
+# and runs main() — leaving `res` (a list with $long, $by_pp, $by_grp)
+# in the environment for this Rmd to pull from.
+source("script.R")
+
+long  <- res$long
+by_pp <- res$by_pp
+by_grp <- res$by_grp
+
+# APA-style number formatters
+fmt_p   <- function(x) ifelse(x < .001, "< .001",
+                              sub("^0", "", sprintf("= %.3f", x)))
+fmt_pct <- function(x) sprintf("%.1f%%", 100 * x)
+fmt_rt  <- function(x) sprintf("%d ms", round(x * 1000))
+fmt_n   <- function(x) format(x, big.mark = ",")
+
+n_participants <- n_distinct(long$participant)
+n_l1 <- long |> filter(group == "L1") |> pull(participant) |> n_distinct()
+n_l2 <- long |> filter(group == "L2") |> pull(participant) |> n_distinct()
+n_trials_total <- nrow(long)
+```
+
+# Method
+
+## Participants
+
+`r n_participants` participants completed the experiment, comprising `r n_l1` L1 Spanish speakers (IDs beginning with 1) and `r n_l2` L2 Spanish learners (IDs beginning with 2).
+
+## Procedure
+
+Participants completed a three-phase Spanish stress-suffix association task in PsychoPy. The pre-test consisted of 360 trials across 6 blocks, followed by a 120-trial training phase with feedback, and concluded with a 360-trial post-test (parallel structure to the pre-test). On each trial, participants heard a spoken stimulus and selected between *PRESENTE* and *PASADO* response options. Stimuli varied factorially in verb stress (paroxytone, oxytone) and suffix tense (present, past), with match/mismatch conditions defined by the verb-suffix pairing.
+
+## Analysis
+
+Response time (RT) analyses were conducted on correct trials only, with exclusions for responses faster than 200 ms or slower than 5,000 ms. All analyses were run in R using the tidyverse. Group-level means were computed in two steps to avoid bias from unequal cell sizes: trial-level data were first averaged within participant, then averaged across participants.
+
+# Results
+
+## Overall Performance by Phase and Group
+
+```{r overall-table}
+library(knitr)
+
+overall <- by_grp |>
+  mutate(
+    Accuracy = fmt_pct(accuracy),
+    RT       = fmt_rt(rt),
+    Phase    = stringr::str_to_title(as.character(phase))
+  ) |>
+  select(Group = group, Phase, Accuracy, `RT (correct)` = RT,
+         `n` = n_participants)
+
+kable(overall,
+      caption = "Mean accuracy and reaction time by group and phase.",
+      align = c("l", "l", "r", "r", "r"))
+```
+
+```{r overall-prose, results='asis'}
+# Build APA-style paragraph from the data
+make_phase_line <- function(grp_label, grp_code) {
+  rows <- by_grp |> filter(group == grp_code) |> arrange(phase)
+  pre  <- rows |> filter(phase == "pre")
+  post <- rows |> filter(phase == "post")
+  trn  <- rows |> filter(phase == "training")
+
+  parts <- c()
+  if (nrow(pre) > 0)
+    parts <- c(parts, sprintf("pre-test (*M* = %s, RT = %s)",
+                              fmt_pct(pre$accuracy), fmt_rt(pre$rt)))
+  if (nrow(trn) > 0)
+    parts <- c(parts, sprintf("training (*M* = %s, RT = %s)",
+                              fmt_pct(trn$accuracy), fmt_rt(trn$rt)))
+  if (nrow(post) > 0)
+    parts <- c(parts, sprintf("post-test (*M* = %s, RT = %s)",
+                              fmt_pct(post$accuracy), fmt_rt(post$rt)))
+
+  sprintf("%s speakers showed accuracy at %s.",
+          grp_label, paste(parts, collapse = ", "))
+}
+
+cat(make_phase_line("L1 Spanish", "L1"), "\n\n")
+if (n_l2 > 0) cat(make_phase_line("L2 Spanish", "L2"), "\n\n")
+
+# Pre-to-post change
+change_tbl <- by_grp |>
+  filter(phase %in% c("pre", "post")) |>
+  select(group, phase, accuracy, rt) |>
+  pivot_wider(names_from = phase, values_from = c(accuracy, rt)) |>
+  mutate(
+    acc_change = accuracy_post - accuracy_pre,
+    rt_change  = rt_post - rt_pre
+  )
+
+for (g in change_tbl$group) {
+  row <- change_tbl |> filter(group == g)
+  cat(sprintf(
+    "From pre- to post-test, %s speakers showed an accuracy change of %+.1f percentage points and an RT change of %+d ms.\n\n",
+    g, 100 * row$acc_change, round(1000 * row$rt_change)
+  ))
+}
+```
+
+```{r fig1, fig.cap="Mean accuracy (left) and reaction time (right) for pre- and post-test phases by group. Error bars represent standard error of the mean. Dashed line indicates chance performance."}
+knitr::include_graphics("behavioral_output/fig1_pre_post_by_group.png")
+```
+
+## Performance by Verb Stress and Suffix Tense
+
+```{r condition-table}
+cond_tbl <- summary_group(long, c("verb_stress", "suffix_tense")) |>
+  filter(phase %in% c("pre", "post"),
+         !is.na(verb_stress), !is.na(suffix_tense)) |>
+  mutate(
+    Accuracy = fmt_pct(accuracy),
+    RT       = fmt_rt(rt),
+    Phase    = stringr::str_to_title(as.character(phase)),
+    Stress   = stringr::str_to_title(verb_stress),
+    Tense    = stringr::str_to_title(suffix_tense)
+  ) |>
+  select(Group = group, Phase, `Verb Stress` = Stress,
+         `Suffix Tense` = Tense, Accuracy, `RT (correct)` = RT)
+
+kable(cond_tbl,
+      caption = "Accuracy and reaction time by group, phase, and condition.",
+      align = c("l", "l", "l", "l", "r", "r"))
+```
+
+```{r fig3, fig.cap="Accuracy (left) and reaction time (right) at pre- and post-test, broken down by verb stress (paroxytone vs. oxytone) and suffix tense (present vs. past), separately for each group."}
+knitr::include_graphics("behavioral_output/fig3_condition_breakdown.png")
+```
+
+## Training Phase
+
+```{r training-table}
+train_tbl <- summary_group(filter(long, phase == "training"),
+                           c("stress_unstress", "present_past")) |>
+  filter(!is.na(stress_unstress), !is.na(present_past)) |>
+  mutate(
+    Accuracy = fmt_pct(accuracy),
+    RT       = fmt_rt(rt),
+    Stress   = stress_unstress,
+    Tense    = stringr::str_to_title(present_past)
+  ) |>
+  select(Group = group, Stress, Tense, Accuracy, `RT (correct)` = RT)
+
+kable(train_tbl,
+      caption = "Training phase accuracy and reaction time by group and condition.",
+      align = c("l", "l", "l", "r", "r"))
+```
+
+```{r training-prose, results='asis'}
+train_by_grp <- by_grp |> filter(phase == "training")
+for (i in seq_len(nrow(train_by_grp))) {
+  row <- train_by_grp[i, ]
+  cat(sprintf(
+    "During training, %s speakers reached an overall accuracy of %s (RT = %s on correct trials).\n\n",
+    row$group, fmt_pct(row$accuracy), fmt_rt(row$rt)
+  ))
+}
+```
+
+```{r fig2, fig.cap="Training phase accuracy (left) and reaction time (right) across 10-trial bins by group. Error bars represent standard error of the mean."}
+knitr::include_graphics("behavioral_output/fig2_training_curve.png")
+```
+
+## Per-Participant Summary
+
+```{r pp-table}
+pp_tbl <- by_pp |>
+  mutate(
+    Accuracy = fmt_pct(accuracy),
+    `Mean RT`   = fmt_rt(mean_rt_correct),
+    `Median RT` = fmt_rt(median_rt_correct),
+    Phase    = stringr::str_to_title(as.character(phase))
+  ) |>
+  select(Participant = participant, Group = group, Phase,
+         `n trials` = n_trials, Accuracy, `Mean RT`, `Median RT`)
+
+kable(pp_tbl,
+      caption = "Per-participant accuracy and reaction time by phase.",
+      align = c("r", "l", "l", "r", "r", "r", "r"))
+```
+
+# Session Info
+
+```{r session, echo=FALSE}
+sessionInfo()
+```

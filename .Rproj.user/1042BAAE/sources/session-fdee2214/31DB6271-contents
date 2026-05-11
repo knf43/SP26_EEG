@@ -1,0 +1,418 @@
+# ============================================================
+# Behavioral analysis: StressLearning2025 PsychoPy CSVs
+# Auto-detects group from participant ID (1xx=L1, 2xx=L2)
+# Conditions named by verb stress + noun match + verb match
+# RT analyses: correct only, incorrect only, all trials
+# Outputs: behavioral_summary.xlsx + figures
+# ============================================================
+
+library(tidyverse)
+library(openxlsx)
+library(fs)
+library(patchwork)
+
+# ---- CONFIG -------------------------------------------------
+DATA_DIR    <- "~/Desktop/SP26_data/2_psychopy_data"
+OUTPUT_DIR  <- "~/Desktop/SP26_data/behavioral_output"
+RT_LOWER    <- 0.200
+RT_UPPER    <- 5.000
+
+dir_create(OUTPUT_DIR)
+
+# ---- helpers ------------------------------------------------
+get_group <- function(pid) {
+  s <- as.character(as.integer(pid))
+  case_when(
+    str_starts(s, "1") ~ "L1",
+    str_starts(s, "2") ~ "L2",
+    TRUE ~ "Unknown"
+  )
+}
+
+# Condition legend.
+# Naming convention: {stress}_noun{match|mismatch}_verb{match|mismatch}
+# To rename, edit `cond_name` here — all downstream tables/plots update.
+COND_LEGEND_PREPOST <- tibble::tribble(
+  ~cond, ~cond_name,                       ~verb_stress, ~verb_match, ~suffix_tense, ~noun_match, ~splice,
+  "a",   "parox_nounmatch_verbmatch",      "paroxytone", "Match",     "present",     "Match",     "a",
+  "b",   "oxy_nounmismatch_verbmatch",     "oxytone",    "Match",     "past",        "Mismatch",  "a",
+  "c",   "parox_nounmatch_verbmismatch",   "paroxytone", "Mismatch",  "past",        "Match",     "a",
+  "d",   "parox_nounmismatch_verbmatch",   "paroxytone", "Match",     "present",     "Mismatch",  "c",
+  "e",   "oxy_nounmatch_verbmismatch",     "oxytone",    "Mismatch",  "present",     "Match",     "c",
+  "f",   "oxy_nounmatch_verbmatch",        "oxytone",    "Match",     "past",        "Match",     "c"
+)
+
+COND_LEGEND_TRAINING <- tibble::tribble(
+  ~cond, ~cond_name, ~verb_stress, ~tense,
+  "a",   "parox",    "paroxytone", "present",
+  "b",   "oxy",      "oxytone",    "past"
+)
+
+# Plot order: paroxytone first (a, d, c), then oxytone (f, b, e)
+COND_NAME_ORDER <- c("parox_nounmatch_verbmatch",
+                     "parox_nounmismatch_verbmatch",
+                     "parox_nounmatch_verbmismatch",
+                     "oxy_nounmatch_verbmatch",
+                     "oxy_nounmismatch_verbmatch",
+                     "oxy_nounmatch_verbmismatch")
+
+extract_phase <- function(df, phase) {
+  pid <- df$participant |> na.omit() |> first() |> as.integer()
+  grp <- get_group(pid)
+
+  spec <- switch(
+    phase,
+    pre = list(
+      filter_col = "exp_pre_loop.thisN",
+      corr = "exp_pre_loop.resp_e.corr",
+      rt   = "exp_pre_loop.resp_e.rt",
+      keys = "exp_pre_loop.resp_e.keys",
+      trial = "exp_pre_loop.thisN"
+    ),
+    post = list(
+      filter_col = "exp_post_loop.thisN",
+      corr = "exp_post_loop.resp_e.corr",
+      rt   = "exp_post_loop.resp_e.rt",
+      keys = "exp_post_loop.resp_e.keys",
+      trial = "exp_post_loop.thisN"
+    ),
+    training = list(
+      filter_col = "training_loop.thisN",
+      corr = "training_loop.training_resp.corr",
+      rt   = "training_loop.training_resp.rt",
+      keys = "training_loop.training_resp.keys",
+      trial = "training_loop.thisN"
+    ),
+    stop("Unknown phase")
+  )
+
+  required <- c(spec$filter_col, spec$corr, spec$rt, spec$keys, spec$trial)
+  if (!all(required %in% names(df))) {
+    message("  P", pid, ": skipping '", phase,
+            "' (missing columns — phase likely not reached)")
+    return(tibble())
+  }
+
+  sound_src <- if (phase == "training" && "sounds_stem" %in% names(df)) {
+    "sounds_stem"
+  } else {
+    "sounds"
+  }
+
+  cond_cols <- c("sounds", "sounds_stem", "block", "verb_stress", "verb_match",
+                 "suffix_tense", "noun_match", "splicing_noun", "syll",
+                 "corrAns", "present_side", "stress_unstress", "present_past")
+  cond_cols <- intersect(cond_cols, names(df))
+
+  out <- df |>
+    filter(!is.na(.data[[spec$filter_col]])) |>
+    transmute(
+      participant = pid,
+      group       = grp,
+      phase       = phase,
+      trial       = as.numeric(.data[[spec$trial]]),
+      corr        = as.numeric(.data[[spec$corr]]),
+      rt          = as.numeric(.data[[spec$rt]]),
+      response    = .data[[spec$keys]],
+      cond        = str_extract(.data[[sound_src]], "(?<=_\\d{2})[a-f]"),
+      across(all_of(cond_cols))
+    )
+
+  legend <- if (phase == "training") {
+    COND_LEGEND_TRAINING |> select(cond, cond_name)
+  } else {
+    COND_LEGEND_PREPOST |> select(cond, cond_name)
+  }
+  out |> left_join(legend, by = "cond")
+}
+
+load_all <- function(files) {
+  map_dfr(files, function(f) {
+    df <- suppressWarnings(read_csv(f, show_col_types = FALSE,
+                                     guess_max = 5000))
+    map_dfr(c("pre", "training", "post"), \(p) extract_phase(df, p))
+  })
+}
+
+# Three RT columns — same 200ms/5s bounds for all
+clean_rt <- function(long) {
+  long |> mutate(
+    rt_valid     = !is.na(rt) & rt >= RT_LOWER & rt <= RT_UPPER,
+    rt_all       = if_else(rt_valid, rt, NA_real_),
+    rt_correct   = if_else(rt_valid & corr == 1, rt, NA_real_),
+    rt_incorrect = if_else(rt_valid & corr == 0, rt, NA_real_)
+  ) |>
+    select(-rt_valid)
+}
+
+# ---- summaries ----------------------------------------------
+summary_pp <- function(long) {
+  long |>
+    group_by(participant, group, phase) |>
+    summarise(
+      n_trials     = n(),
+      n_correct    = sum(corr == 1, na.rm = TRUE),
+      n_incorrect  = sum(corr == 0, na.rm = TRUE),
+      accuracy     = mean(corr, na.rm = TRUE),
+      rt_all       = mean(rt_all, na.rm = TRUE),
+      rt_correct   = mean(rt_correct, na.rm = TRUE),
+      rt_incorrect = mean(rt_incorrect, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(phase = factor(phase, levels = c("pre", "training", "post"))) |>
+    arrange(participant, phase)
+}
+
+# Two-step group summary: within-participant first, then across
+summary_group <- function(long, cond_cols = character()) {
+  cond_cols <- intersect(cond_cols, names(long))
+  by_p <- long |>
+    group_by(across(all_of(c("participant", "group", "phase", cond_cols)))) |>
+    summarise(
+      accuracy     = mean(corr, na.rm = TRUE),
+      n_incorrect  = sum(corr == 0, na.rm = TRUE),
+      rt_all       = mean(rt_all, na.rm = TRUE),
+      rt_correct   = mean(rt_correct, na.rm = TRUE),
+      rt_incorrect = mean(rt_incorrect, na.rm = TRUE),
+      .groups  = "drop"
+    )
+  by_p |>
+    group_by(across(all_of(c("group", "phase", cond_cols)))) |>
+    summarise(
+      accuracy        = mean(accuracy, na.rm = TRUE),
+      rt_all          = mean(rt_all, na.rm = TRUE),
+      rt_correct      = mean(rt_correct, na.rm = TRUE),
+      rt_incorrect    = mean(rt_incorrect, na.rm = TRUE),
+      total_incorrect = sum(n_incorrect, na.rm = TRUE),
+      n_participants  = n_distinct(participant),
+      .groups  = "drop"
+    ) |>
+    mutate(phase = factor(phase, levels = c("pre", "training", "post"))) |>
+    arrange(group, phase, across(all_of(cond_cols)))
+}
+
+# ---- plots --------------------------------------------------
+theme_set(theme_minimal(base_size = 12))
+
+plot_pre_post <- function(long, path) {
+  d <- long |>
+    filter(phase %in% c("pre", "post")) |>
+    group_by(participant, group, phase) |>
+    summarise(accuracy = mean(corr, na.rm = TRUE),
+              rt = mean(rt_correct, na.rm = TRUE),
+              .groups = "drop") |>
+    mutate(phase = factor(phase, levels = c("pre", "post")))
+
+  p_acc <- ggplot(d, aes(group, accuracy, fill = phase)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+    coord_cartesian(ylim = c(0, 1.05)) +
+    scale_fill_manual(values = c(pre = "#9ecae1", post = "#3182bd")) +
+    labs(title = "Accuracy: Pre vs Post by Group", x = NULL,
+         y = "Proportion correct")
+
+  p_rt <- ggplot(d, aes(group, rt, fill = phase)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    scale_fill_manual(values = c(pre = "#fdae6b", post = "#e6550d")) +
+    labs(title = "RT (correct only): Pre vs Post by Group", x = NULL,
+         y = "Mean RT (s)")
+
+  ggsave(path, p_acc + p_rt, width = 11, height = 4.5, dpi = 150)
+}
+
+# RT comparison: correct / incorrect / all side by side
+plot_rt_comparison <- function(long, path) {
+  d <- long |>
+    filter(phase %in% c("pre", "post")) |>
+    group_by(participant, group, phase) |>
+    summarise(
+      rt_correct   = mean(rt_correct, na.rm = TRUE),
+      rt_incorrect = mean(rt_incorrect, na.rm = TRUE),
+      rt_all       = mean(rt_all, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    pivot_longer(starts_with("rt_"), names_to = "rt_type", values_to = "rt") |>
+    mutate(
+      rt_type = factor(rt_type,
+                       levels = c("rt_correct", "rt_incorrect", "rt_all"),
+                       labels = c("Correct only", "Incorrect only", "All trials")),
+      phase = factor(phase, levels = c("pre", "post"))
+    ) |>
+    filter(!is.na(rt))
+
+  p <- ggplot(d, aes(group, rt, fill = phase)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    facet_wrap(~ rt_type, scales = "free_y") +
+    scale_fill_manual(values = c(pre = "#fdae6b", post = "#e6550d")) +
+    labs(title = "Reaction Time by Group and Phase",
+         subtitle = "Correct, incorrect, and all trials",
+         x = NULL, y = "Mean RT (s)")
+  ggsave(path, p, width = 12, height = 4.5, dpi = 150)
+}
+
+plot_training_curve <- function(long, path) {
+  d <- long |>
+    filter(phase == "training") |>
+    mutate(bin = (trial %/% 10) * 10) |>
+    group_by(participant, group, bin) |>
+    summarise(accuracy = mean(corr, na.rm = TRUE),
+              rt = mean(rt_correct, na.rm = TRUE),
+              .groups = "drop")
+
+  p_acc <- ggplot(d, aes(bin, accuracy, colour = group)) +
+    stat_summary(fun = mean, geom = "line", linewidth = 1) +
+    stat_summary(fun = mean, geom = "point", size = 2) +
+    stat_summary(fun.data = mean_se, geom = "errorbar", width = 2) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+    coord_cartesian(ylim = c(0, 1.05)) +
+    labs(title = "Training accuracy across trials (10-trial bins)",
+         x = "Trial number", y = "Proportion correct")
+
+  p_rt <- ggplot(d, aes(bin, rt, colour = group)) +
+    stat_summary(fun = mean, geom = "line", linewidth = 1) +
+    stat_summary(fun = mean, geom = "point", size = 2) +
+    stat_summary(fun.data = mean_se, geom = "errorbar", width = 2) +
+    labs(title = "Training RT across trials (correct only)",
+         x = "Trial number", y = "Mean RT (s)")
+
+  ggsave(path, p_acc + p_rt, width = 11, height = 4.5, dpi = 150)
+}
+
+plot_condition_letter <- function(long, path) {
+  d <- long |>
+    filter(phase %in% c("pre", "post"), !is.na(cond_name)) |>
+    group_by(participant, group, phase, cond_name) |>
+    summarise(accuracy = mean(corr, na.rm = TRUE),
+              rt = mean(rt_correct, na.rm = TRUE),
+              .groups = "drop") |>
+    mutate(
+      phase = factor(phase, levels = c("pre", "post")),
+      cond_name = factor(cond_name, levels = COND_NAME_ORDER)
+    )
+
+  p_acc <- ggplot(d, aes(cond_name, accuracy, fill = phase)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    facet_wrap(~ group, ncol = 1) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+    coord_cartesian(ylim = c(0, 1.05)) +
+    scale_fill_manual(values = c(pre = "#9ecae1", post = "#3182bd")) +
+    labs(title = "Accuracy by Condition", x = NULL,
+         y = "Proportion correct") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+  p_rt <- ggplot(d, aes(cond_name, rt, fill = phase)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    facet_wrap(~ group, ncol = 1) +
+    scale_fill_manual(values = c(pre = "#fdae6b", post = "#e6550d")) +
+    labs(title = "RT (correct only) by Condition", x = NULL,
+         y = "Mean RT (s)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+  ggsave(path, p_acc + p_rt, width = 14, height = 9, dpi = 150)
+}
+
+plot_training_condition <- function(long, path) {
+  d <- long |>
+    filter(phase == "training", !is.na(cond_name)) |>
+    group_by(participant, group, cond_name) |>
+    summarise(accuracy = mean(corr, na.rm = TRUE),
+              rt = mean(rt_correct, na.rm = TRUE),
+              .groups = "drop")
+
+  p_acc <- ggplot(d, aes(cond_name, accuracy, fill = group)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+    coord_cartesian(ylim = c(0, 1.05)) +
+    labs(title = "Training Accuracy by Condition", x = NULL,
+         y = "Proportion correct")
+
+  p_rt <- ggplot(d, aes(cond_name, rt, fill = group)) +
+    stat_summary(fun = mean, geom = "col",
+                 position = position_dodge(0.8), width = 0.7) +
+    stat_summary(fun.data = mean_se, geom = "errorbar",
+                 position = position_dodge(0.8), width = 0.2) +
+    labs(title = "Training RT (correct only) by Condition", x = NULL,
+         y = "Mean RT (s)")
+
+  ggsave(path, p_acc + p_rt, width = 11, height = 4.5, dpi = 150)
+}
+
+# ---- main ---------------------------------------------------
+main <- function(data_dir = DATA_DIR) {
+  files <- dir_ls(data_dir, glob = "*StressLearning2025*.csv")
+  if (length(files) == 0) stop("No CSVs found in ", data_dir)
+  message("Loading ", length(files), " file(s)...")
+
+  long <- load_all(files) |> clean_rt()
+
+  message("  Total trials: ", nrow(long))
+  message("  Participants: ",
+          paste(sort(unique(long$participant)), collapse = ", "))
+
+  by_pp        <- summary_pp(long)
+  by_grp       <- summary_group(long)
+  by_grp_cond  <- summary_group(long, "cond_name")
+  by_grp_vstr  <- summary_group(long, "verb_stress")
+  by_grp_full  <- summary_group(long, c("verb_stress", "suffix_tense"))
+  by_grp_match <- summary_group(long, "verb_match")
+  by_grp_train <- summary_group(filter(long, phase == "training"),
+                                c("stress_unstress", "present_past"))
+  by_grp_train_cond <- summary_group(filter(long, phase == "training"), "cond_name")
+
+  xlsx_path <- path(OUTPUT_DIR, "behavioral_summary.xlsx")
+  write.xlsx(
+    list(
+      trial_long                     = long,
+      participant_x_phase            = by_pp,
+      group_x_phase                  = by_grp,
+      group_x_phase_x_cond           = by_grp_cond,
+      group_x_phase_x_vstress        = by_grp_vstr,
+      group_x_phase_x_vstress_x_suff = by_grp_full,
+      group_x_phase_x_vmatch         = by_grp_match,
+      training_breakdown             = by_grp_train,
+      training_by_cond               = by_grp_train_cond,
+      cond_legend_prepost            = COND_LEGEND_PREPOST,
+      cond_legend_training           = COND_LEGEND_TRAINING
+    ),
+    xlsx_path, overwrite = TRUE
+  )
+
+  plot_pre_post(long,            path(OUTPUT_DIR, "fig1_pre_post_by_group.png"))
+  plot_rt_comparison(long,       path(OUTPUT_DIR, "fig2_rt_comparison.png"))
+  plot_training_curve(long,      path(OUTPUT_DIR, "fig3_training_curve.png"))
+  plot_condition_letter(long,    path(OUTPUT_DIR, "fig4_condition.png"))
+  plot_training_condition(long,  path(OUTPUT_DIR, "fig5_training_condition.png"))
+
+  message("\nWrote: ", xlsx_path)
+  cat("\n--- Per-participant × phase ---\n");                 print(by_pp)
+  cat("\n--- Group × phase (overall) ---\n");                 print(by_grp)
+  cat("\n--- Group × phase × condition ---\n");               print(by_grp_cond)
+  cat("\n--- Training: group × condition ---\n");             print(by_grp_train_cond)
+
+  invisible(list(
+    long = long, by_pp = by_pp, by_grp = by_grp,
+    by_grp_cond = by_grp_cond, by_grp_train_cond = by_grp_train_cond,
+    cond_legend_prepost = COND_LEGEND_PREPOST,
+    cond_legend_training = COND_LEGEND_TRAINING
+  ))
+}
+
+res <- main()
