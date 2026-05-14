@@ -1,26 +1,26 @@
 {
-    "id": "947DAABE",
-    "path": "~/Downloads/index-6.Rmd",
+    "id": "A599227A",
+    "path": "~/Downloads/index-7.Rmd",
     "project_path": null,
     "type": "r_markdown",
     "hash": "0",
     "contents": "",
     "dirty": false,
-    "created": 1778780463669.0,
+    "created": 1778786311197.0,
     "source_on_save": false,
-    "relative_order": 9,
+    "relative_order": 6,
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "483,0",
+        "cursorPosition": "606,0",
         "scrollLine": "0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1778780445,
+    "lastKnownWriteTime": 1778786308,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1778780445,
+    "last_content_update": 1778786308,
     "read_only": false,
     "read_only_alternatives": []
 }

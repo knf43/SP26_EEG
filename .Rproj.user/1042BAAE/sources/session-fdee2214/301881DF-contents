@@ -117,7 +117,9 @@ Accuracy and RT data from the pre- and post-test phases were analyzed using gene
 
 ## Results
 
-The accuracy model was fit with a maximal error term (marginal R² = 0.04; conditional R² = 0.38). The analysis revealed a significant group × phase interaction [χ²(1) = 4.62; *p* = .032] and a significant main effect of condition [χ²(5) = 15.39; *p* = .009]. The main effects of group [χ²(1) = 2.94; *p* = .087] and phase [χ²(1) = 0.01; *p* = .944] were not significant. The RT model was fit with a maximal error term (marginal R² = 0.10; conditional R² = 0.32). The analysis revealed significant main effects of group [χ²(1) = 6.27; *p* = .012], phase [χ²(1) = 22.06; *p* < .001], and condition [χ²(5) = 119.38; *p* < .001]; the group × phase interaction was not significant [χ²(1) = 2.92; *p* = .087]. The training-phase model (marginal R² = 0.05; conditional R² = 0.19) showed a significant main effect of group [χ²(1) = 6.73; *p* = .009]; the effects of trial [χ²(1) = 2.86; *p* = .091] and group × trial [χ²(1) = 0.55; *p* = .458] were not significant. Follow-up RT analyses examined two prediction cues. The verb-match analysis (verb stress → suffix prediction) revealed significant interactions of group × verb match [χ²(1) = 9.43; *p* = .002] and phase × verb match [χ²(1) = 4.94; *p* = .026]; the group × phase × verb match interaction was not significant [χ²(1) = 0.33; *p* = .565]. The noun-match analysis (noun F0 → verb prediction) yielded no significant effects in accuracy or RT (all *p* > .12).
+The accuracy model was fit with a maximal error term (marginal R² = 0.04; conditional R² = 0.38). The analysis revealed a significant group × phase interaction [χ²(1) = 4.62; *p* = .032] and a significant main effect of condition [χ²(5) = 15.39; *p* = .009]. The main effects of group [χ²(1) = 2.94; *p* = .087] and phase [χ²(1) = 0.01; *p* = .944] were not significant. The RT model was fit with a maximal error term (marginal R² = 0.10; conditional R² = 0.32). The analysis revealed significant main effects of group [χ²(1) = 6.27; *p* = .012], phase [χ²(1) = 22.06; *p* < .001], and condition [χ²(5) = 119.38; *p* < .001]; the group × phase interaction was not significant [χ²(1) = 2.92; *p* = .087]. The training-phase model (marginal R² = 0.05; conditional R² = 0.19) showed a significant main effect of group [χ²(1) = 6.73; *p* = .009]; the effects of trial [χ²(1) = 2.86; *p* = .091] and group × trial [χ²(1) = 0.55; *p* = .458] were not significant.
+
+Four follow-up analyses examined the verb-mismatch and noun-mismatch effects on accuracy and RT. The verb-match accuracy model revealed no significant interactions of group × verb match [χ²(1) = 2.82; *p* = .093], phase × verb match [χ²(1) = 0.78; *p* = .379], or group × phase × verb match [χ²(1) = 0.02; *p* = .899]. The verb-match RT model revealed significant interactions of group × verb match [χ²(1) = 9.43; *p* = .002] and phase × verb match [χ²(1) = 4.94; *p* = .026]; the three-way interaction was not significant [χ²(1) = 0.33; *p* = .565]. The noun-match models revealed no significant effects in either accuracy or RT (all *p* > .12). The verb-stress × verb-match accuracy model revealed a significant main effect of verb stress [χ²(1) = 4.89; *p* = .027] and verb match [χ²(1) = 8.54; *p* = .003]; the interaction was not significant [χ²(1) = 0.01; *p* = .930]. The verb-stress × verb-match RT model revealed significant main effects of verb stress [χ²(1) = 45.98; *p* < .001] and verb match [χ²(1) = 14.00; *p* < .001], and a significant verb-stress × verb-match interaction [χ²(1) = 4.92; *p* = .026]. The group × verb-stress × verb-match accuracy model revealed no significant effects (all *p* > .05). The group × verb-stress × verb-match RT model revealed a significant three-way interaction [χ²(1) = 15.21; *p* < .001], a significant group × verb match interaction [χ²(1) = 9.11; *p* = .003], and a significant verb-stress × verb-match interaction [χ²(1) = 4.94; *p* = .026]; the group × verb-stress interaction was not significant [χ²(1) = 2.41; *p* = .121].
 
 # Descriptive Results
 
@@ -331,13 +333,13 @@ cat("**Direction:** L1 higher accuracy than L2 throughout training. Trial effect
 knitr::include_graphics(file.path(GLMM_DIR, "forest_plot.png"))
 ```
 
-# Follow-Up: Prediction Strategies
+# Follow-Up: Verb- and Noun-Mismatch Effects
 
-Follow-up analyses test whether participants used the two F0/stress cues in the stimuli for online prediction. **Verb match** tests whether the verb's stress pattern was used to predict the suffix (mismatch = prediction error at suffix). **Noun match** tests whether the noun's F0 contour was used to predict the upcoming verb (mismatch = prediction error at verb). Each factor was tested in a separate model that included the other two factors (verb stress, the other match factor) as additive controls. The full 3-way interaction with group and phase was tested, along with its component 2-way interactions.
+Follow-up analyses examined the verb-mismatch and noun-mismatch effects on accuracy and RT. Four pairs of models test (a) `group × phase × verb_match`, (b) `group × phase × noun_match`, (c) `verb_stress × verb_match`, and (d) `group × verb_stress × verb_match`. Mismatch cost convention: positive cost = mismatch worse than match (= prediction surprise). RT cost = Mismatch − Match (ms); accuracy cost = Match − Mismatch (percentage points).
 
-## Verb match (suffix prediction)
+## Verb match × group × phase
 
-```{r fig-followup-rt-vm, fig.cap="Model-predicted RT by verb match (suffix prediction), group, and phase.", eval=has_followup}
+```{r fig-followup-rt-vm, fig.cap="Model-predicted RT by verb match, group, and phase.", eval=has_followup}
 knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_verbmatch.png"))
 ```
 
@@ -345,26 +347,30 @@ knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_verbmatch.png"))
 knitr::include_graphics(file.path(GLMM_DIR, "followup_acc_verbmatch.png"))
 ```
 
-```{r fig-cost, fig.cap="Model-derived RT mismatch cost (mismatch − match, in ms) by group and phase. Positive values = mismatch slower than match (prediction surprise).", eval=has_followup}
-knitr::include_graphics(file.path(GLMM_DIR, "followup_model_cost.png"))
+```{r fig-cost-rt-phase, fig.cap="Model-derived RT mismatch cost by group and phase. Positive = mismatch slower than match.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_rt_phase.png"))
 ```
 
-```{r cost-table, eval=has_followup}
-followup$cost_data |>
-  mutate(across(c(Match, Mismatch, cost_ms), \(x) round(x, 1))) |>
-  kable(caption = "Model-derived RT values (ms) and mismatch cost by factor, group, and phase.",
-        col.names = c("Factor", "Group", "Phase", "Match (ms)", "Mismatch (ms)", "Cost (ms)"))
+```{r fig-cost-acc-phase, fig.cap="Model-derived accuracy mismatch cost by group and phase. Positive = mismatch less accurate than match.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_acc_phase.png"))
 ```
 
-```{r vm-nmc-table, eval=has_followup}
+```{r q1q2-cost-table, eval=has_followup}
+followup$cost_q1q2 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Verb-match and noun-match: model-derived match/mismatch values and cost by group and phase.",
+        col.names = c("Factor", "Measure", "Group", "Phase", "Match", "Mismatch", "Cost"))
+```
+
+```{r q1-nmc-table, eval=has_followup}
 followup$nmc_followup |>
   filter(model %in% c("acc_verbmatch", "rt_verbmatch")) |>
-  kable(caption = "Verb-match follow-up: nested model comparisons.",
+  kable(caption = "Verb-match: nested model comparisons.",
         col.names = c("Model", "Effect", "χ²", "df", "p"),
         digits = 3)
 ```
 
-```{r vm-results, results='asis', eval=has_followup}
+```{r q1-results, results='asis', eval=has_followup}
 nmc_acc_3way <- get_nmc("acc_verbmatch", "group:phase:verb_match", followup$nmc_followup)
 nmc_acc_g    <- get_nmc("acc_verbmatch", "group:verb_match",       followup$nmc_followup)
 nmc_acc_p    <- get_nmc("acc_verbmatch", "phase:verb_match",       followup$nmc_followup)
@@ -388,12 +394,12 @@ cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
 cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
             nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
 
-cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction not significant).\n\n")
+cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups.\n\n")
 ```
 
-## Noun match (verb prediction)
+## Noun match × group × phase
 
-```{r fig-followup-rt-nm, fig.cap="Model-predicted RT by noun match (verb prediction), group, and phase.", eval=has_followup}
+```{r fig-followup-rt-nm, fig.cap="Model-predicted RT by noun match, group, and phase.", eval=has_followup}
 knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_nounmatch.png"))
 ```
 
@@ -401,15 +407,15 @@ knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_nounmatch.png"))
 knitr::include_graphics(file.path(GLMM_DIR, "followup_acc_nounmatch.png"))
 ```
 
-```{r nm-nmc-table, eval=has_followup}
+```{r q2-nmc-table, eval=has_followup}
 followup$nmc_followup |>
   filter(model %in% c("acc_nounmatch", "rt_nounmatch")) |>
-  kable(caption = "Noun-match follow-up: nested model comparisons.",
+  kable(caption = "Noun-match: nested model comparisons.",
         col.names = c("Model", "Effect", "χ²", "df", "p"),
         digits = 3)
 ```
 
-```{r nm-results, results='asis', eval=has_followup}
+```{r q2-results, results='asis', eval=has_followup}
 nmc_acc_3way <- get_nmc("acc_nounmatch", "group:phase:noun_match", followup$nmc_followup)
 nmc_acc_g    <- get_nmc("acc_nounmatch", "group:noun_match",       followup$nmc_followup)
 nmc_acc_p    <- get_nmc("acc_nounmatch", "phase:noun_match",       followup$nmc_followup)
@@ -434,6 +440,116 @@ cat(sprintf("- Group × Phase × noun match: χ²(%d) = %s, *p* %s\n\n",
             nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
 
 cat("**Direction:** No noun-match effects reached significance in either accuracy or RT.\n\n")
+```
+
+## Verb stress × verb match
+
+```{r fig-cost-rt-stress, fig.cap="Model-derived RT verb-mismatch cost by stress type.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_rt_stress.png"))
+```
+
+```{r fig-cost-acc-stress, fig.cap="Model-derived accuracy verb-mismatch cost by stress type.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_acc_stress.png"))
+```
+
+```{r q3-cost-table, eval=has_followup}
+followup$cost_q3 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Verb stress × verb match: model-derived match/mismatch values and verb-mismatch cost by stress type.",
+        col.names = c("Factor", "Measure", "Stress", "Match", "Mismatch", "Cost"))
+```
+
+```{r q3-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_stress_vm", "rt_stress_vm")) |>
+  kable(caption = "Verb stress × verb match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q3-results, results='asis', eval=has_followup}
+nmc_acc_int <- get_nmc("acc_stress_vm", "verb_stress:verb_match", followup$nmc_followup)
+nmc_acc_vs  <- get_nmc("acc_stress_vm", "verb_stress",            followup$nmc_followup)
+nmc_acc_vm  <- get_nmc("acc_stress_vm", "verb_match",             followup$nmc_followup)
+nmc_rt_int  <- get_nmc("rt_stress_vm",  "verb_stress:verb_match", followup$nmc_followup)
+nmc_rt_vs   <- get_nmc("rt_stress_vm",  "verb_stress",            followup$nmc_followup)
+nmc_rt_vm   <- get_nmc("rt_stress_vm",  "verb_match",             followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_vs$df, fmt_chi(nmc_acc_vs$chisq), fmt_p_apa(nmc_acc_vs$p)))
+cat(sprintf("- Verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_vm$df, fmt_chi(nmc_acc_vm$chisq), fmt_p_apa(nmc_acc_vm$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_int$df, fmt_chi(nmc_acc_int$chisq), fmt_p_apa(nmc_acc_int$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_vs$df, fmt_chi(nmc_rt_vs$chisq), fmt_p_apa(nmc_rt_vs$p)))
+cat(sprintf("- Verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_vm$df, fmt_chi(nmc_rt_vm$chisq), fmt_p_apa(nmc_rt_vm$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_int$df, fmt_chi(nmc_rt_int$chisq), fmt_p_apa(nmc_rt_int$p)))
+
+cat("**Direction (RT):** Verb-mismatch cost was larger for paroxytone stimuli (~46 ms) than for oxytone stimuli (~14 ms).\n\n")
+```
+
+## Group × verb stress × verb match
+
+```{r fig-cost-rt-group-stress, fig.cap="Model-derived RT verb-mismatch cost by group and stress type.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_rt_group_stress.png"))
+```
+
+```{r fig-cost-acc-group-stress, fig.cap="Model-derived accuracy verb-mismatch cost by group and stress type.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_cost_acc_group_stress.png"))
+```
+
+```{r q4-cost-table, eval=has_followup}
+followup$cost_q4 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Group × verb stress × verb match: model-derived match/mismatch values and verb-mismatch cost by group, stress type, and measure.",
+        col.names = c("Factor", "Measure", "Group", "Stress", "Match", "Mismatch", "Cost"))
+```
+
+```{r q4-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_g_s_vm", "rt_g_s_vm")) |>
+  kable(caption = "Group × verb stress × verb match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q4-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_g_s_vm", "group:verb_stress:verb_match", followup$nmc_followup)
+nmc_acc_gs   <- get_nmc("acc_g_s_vm", "group:verb_stress",            followup$nmc_followup)
+nmc_acc_gv   <- get_nmc("acc_g_s_vm", "group:verb_match",             followup$nmc_followup)
+nmc_acc_sv   <- get_nmc("acc_g_s_vm", "verb_stress:verb_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_g_s_vm",  "group:verb_stress:verb_match", followup$nmc_followup)
+nmc_rt_gs    <- get_nmc("rt_g_s_vm",  "group:verb_stress",            followup$nmc_followup)
+nmc_rt_gv    <- get_nmc("rt_g_s_vm",  "group:verb_match",             followup$nmc_followup)
+nmc_rt_sv    <- get_nmc("rt_g_s_vm",  "verb_stress:verb_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_gs$df, fmt_chi(nmc_acc_gs$chisq), fmt_p_apa(nmc_acc_gs$p)))
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_gv$df, fmt_chi(nmc_acc_gv$chisq), fmt_p_apa(nmc_acc_gv$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_sv$df, fmt_chi(nmc_acc_sv$chisq), fmt_p_apa(nmc_acc_sv$p)))
+cat(sprintf("- Group × verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_gs$df, fmt_chi(nmc_rt_gs$chisq), fmt_p_apa(nmc_rt_gs$p)))
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_gv$df, fmt_chi(nmc_rt_gv$chisq), fmt_p_apa(nmc_rt_gv$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_sv$df, fmt_chi(nmc_rt_sv$chisq), fmt_p_apa(nmc_rt_sv$p)))
+cat(sprintf("- Group × verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction (RT):** L1 speakers showed positive verb-mismatch costs on both paroxytone (~41 ms) and oxytone (~54 ms) stimuli. L2 learners showed a positive cost on paroxytone (~70 ms) and a negative cost on oxytone (−51 ms).\n\n")
 ```
 
 # Diagnostics
@@ -473,7 +589,7 @@ pp_tbl <- by_pp |>
 
 kable(pp_tbl,
       caption = "Per-participant accuracy and RT by phase.",
-      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r")) 
+      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r"))
 ```
 
 # Session Info
