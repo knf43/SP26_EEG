@@ -113,7 +113,7 @@ kable(cond_legend_training,
 
 Reaction time was analyzed on correct trials, incorrect trials, and all trials, with bounds 200–5000 ms. Group means were computed by averaging within participant first, then across participants.
 
-Inferential analyses were run with generalized linear mixed-effects models (`lme4`). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
+Inferential analyses were run with generalized linear mixed-effects models (`lme4`) following Casillas (2025). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
 
 In sum-coded factor tables, condition labels use the format `stress / N± / V±` where `N+/V+` = match and `N−/V−` = mismatch. The reference cell (not shown in tables) is `oxy / N+ / V−`; its β equals the negative sum of the other five coefficients.
 
@@ -479,4 +479,3 @@ kable(pp_tbl,
 ```{r session, echo=FALSE}
 sessionInfo()
 ```
-

@@ -14,6 +14,11 @@ knitr::opts_chunk$set(
   dpi = 150
 )
 
+library(knitr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+
 source("script.R")
 
 long  <- res$long
@@ -39,27 +44,58 @@ n_participants <- n_distinct(long$participant)
 n_l1 <- long |> filter(group == "L1") |> pull(participant) |> n_distinct()
 n_l2 <- long |> filter(group == "L2") |> pull(participant) |> n_distinct()
 
-FIG_DIR <- "~/Desktop/SP26_data/behavioral_output"
+FIG_DIR  <- "~/Desktop/SP26_data/behavioral_output"
+GLMM_DIR <- "~/Desktop/SP26_data/behavioral_output/glmm"
+
+glmm_path <- file.path(GLMM_DIR, "glmm_results.rds")
+followup_path <- file.path(GLMM_DIR, "glmm_followup_results.rds")
+has_glmm     <- file.exists(glmm_path)
+has_followup <- file.exists(followup_path)
+if (has_glmm)     glmm     <- readRDS(glmm_path)
+if (has_followup) followup <- readRDS(followup_path)
+
+fmt_chi <- function(x) sprintf("%.2f", x)
+fmt_p_apa <- function(x) ifelse(x < .001, "< .001",
+                                sub("^0", "", sprintf("= %.3f", x)))
+get_nmc <- function(model_name, effect_name, src) {
+  src |> filter(model == model_name, effect == effect_name) |> slice(1)
+}
+
+# Informative labels for sum-coded condition coefficients
+# Order matches COND_NAME_ORDER in script.R:
+# 1: parox_nounmatch_verbmatch     (a)
+# 2: parox_nounmismatch_verbmatch  (d)
+# 3: parox_nounmatch_verbmismatch  (c)
+# 4: oxy_nounmatch_verbmatch       (f)
+# 5: oxy_nounmismatch_verbmatch    (b)
+# 6: oxy_nounmatch_verbmismatch    (e) -- reference (not in table)
+COND_NAME_LABELS <- c(
+  "cond_name1" = "parox / N+ / V+",
+  "cond_name2" = "parox / N− / V+",
+  "cond_name3" = "parox / N+ / V−",
+  "cond_name4" = "oxy / N+ / V+",
+  "cond_name5" = "oxy / N− / V+"
+)
+
+relabel_terms <- function(df) {
+  df |>
+    dplyr::mutate(term = dplyr::recode(term, !!!COND_NAME_LABELS))
+}
 ```
 
 # Method
 
 ## Participants
 
-`r n_participants` participants completed the experiment, comprising `r n_l1` L1 Spanish speakers (IDs beginning with 1) and `r n_l2` L2 Spanish learners (IDs beginning with 2).
+`r n_participants` participants completed the experiment: `r n_l1` L1 Spanish speakers and `r n_l2` L2 Spanish learners.
 
 ## Procedure
 
-Participants completed a three-phase Spanish stress-suffix association task in PsychoPy. The pre-test consisted of 360 trials across 6 blocks, followed by a 120-trial training phase with feedback, and concluded with a 360-trial post-test (parallel structure to the pre-test). On each trial, participants heard a spoken stimulus and selected between *PRESENTE* and *PASADO* response options.
+Three-phase Spanish stress-suffix association task in PsychoPy: pre-test (360 trials, 6 blocks), training (120 trials with feedback), post-test (360 trials, parallel structure). On each trial, participants heard a spoken stimulus and selected *PRESENTE* or *PASADO*.
 
-Pre- and post-test stimuli were drawn from six conditions, labeled by verb stress (paroxytone, oxytone), noun match (Match, Mismatch), and verb match (Match, Mismatch), with splice variants from two source nouns (Table 1). Training stimuli comprised two conditions: `parox` (paroxytone present, condition a) and `oxy` (oxytone past, condition b).
-
-## Analysis
-
-Reaction time (RT) was analyzed three ways: (a) on correct trials only, (b) on incorrect trials only, and (c) on all trials regardless of accuracy. All RT measures used the same trimming criteria, excluding responses faster than 200 ms or slower than 5,000 ms. All analyses were run in R using the tidyverse. Because the number of valid trials per cell varied across participants (e.g., for incorrect-trial RTs), group means were computed by first averaging within participant and then across participants, ensuring equal weighting of each participant.
+Pre/post stimuli were drawn from six conditions varying in verb stress (paroxytone, oxytone), noun match (Match, Mismatch), and verb match (Match, Mismatch). Training stimuli were two conditions: `parox` (a) and `oxy` (b).
 
 ```{r legend-table}
-library(knitr)
 kable(cond_legend_prepost,
       caption = "Table 1. Condition coding for pre- and post-test stimuli.",
       col.names = c("Cond", "Name", "Verb stress", "Verb match", "Suffix tense", "Noun match", "Splice"),
@@ -73,9 +109,17 @@ kable(cond_legend_training,
       align = c("c", "l", "l", "l"))
 ```
 
+## Analysis
+
+Reaction time was analyzed on correct trials, incorrect trials, and all trials, with bounds 200–5000 ms. Group means were computed by averaging within participant first, then across participants.
+
+Inferential analyses were run with generalized linear mixed-effects models (`lme4`). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
+
+In sum-coded factor tables, condition labels use the format `stress / N± / V±` where `N+/V+` = match and `N−/V−` = mismatch. The reference cell (not shown in tables) is `oxy / N+ / V−`; its β equals the negative sum of the other five coefficients.
+
 # Results
 
-## Overall Performance by Phase and Group
+## Descriptive Overview by Phase and Group
 
 ```{r overall-table}
 overall <- by_grp |>
@@ -95,59 +139,13 @@ kable(overall,
       align = c("l", "l", "r", "r", "r", "r", "r", "r"))
 ```
 
-```{r overall-prose, results='asis'}
-make_phase_line <- function(grp_label, grp_code) {
-  rows <- by_grp |> filter(group == grp_code) |> arrange(phase)
-  pre  <- rows |> filter(phase == "pre")
-  post <- rows |> filter(phase == "post")
-  trn  <- rows |> filter(phase == "training")
-
-  parts <- c()
-  if (nrow(pre) > 0)
-    parts <- c(parts, sprintf("pre-test (*M* = %s, RT~correct~ = %s)",
-                              fmt_pct(pre$accuracy), fmt_rt(pre$rt_correct)))
-  if (nrow(trn) > 0)
-    parts <- c(parts, sprintf("training (*M* = %s, RT~correct~ = %s)",
-                              fmt_pct(trn$accuracy), fmt_rt(trn$rt_correct)))
-  if (nrow(post) > 0)
-    parts <- c(parts, sprintf("post-test (*M* = %s, RT~correct~ = %s)",
-                              fmt_pct(post$accuracy), fmt_rt(post$rt_correct)))
-
-  sprintf("%s speakers showed accuracy at %s.",
-          grp_label, paste(parts, collapse = ", "))
-}
-
-cat(make_phase_line("L1 Spanish", "L1"), "\n\n")
-if (n_l2 > 0) cat(make_phase_line("L2 Spanish", "L2"), "\n\n")
-
-change_tbl <- by_grp |>
-  filter(phase %in% c("pre", "post")) |>
-  select(group, phase, accuracy, rt_correct) |>
-  pivot_wider(names_from = phase, values_from = c(accuracy, rt_correct)) |>
-  mutate(
-    acc_change = accuracy_post - accuracy_pre,
-    rt_change  = rt_correct_post - rt_correct_pre
-  )
-
-for (g in change_tbl$group) {
-  row <- change_tbl |> filter(group == g)
-  cat(sprintf(
-    "From pre- to post-test, %s speakers showed an accuracy change of %+.1f percentage points and a correct-trial RT change of %+d ms.\n\n",
-    g, 100 * row$acc_change, round(1000 * row$rt_change)
-  ))
-}
-```
-
-```{r fig1, fig.cap="Mean accuracy (left) and reaction time on correct trials (right) for pre- and post-test phases by group. Error bars represent standard error of the mean. Dashed line indicates chance performance."}
+```{r fig1, fig.cap="Mean accuracy (left) and reaction time on correct trials (right) for pre- and post-test phases by group. Error bars = SEM."}
 knitr::include_graphics(file.path(FIG_DIR, "fig1_pre_post_by_group.png"))
 ```
 
-## Reaction Time: Correct, Incorrect, and All Trials
-
-```{r fig-rt-comparison, fig.cap="Mean reaction time at pre- and post-test by group, computed three ways: correct trials only (left), incorrect trials only (centre), and all trials regardless of accuracy (right)."}
+```{r fig-rt-comparison, fig.cap="Mean reaction time at pre- and post-test by group: correct only, incorrect only, all trials."}
 knitr::include_graphics(file.path(FIG_DIR, "fig2_rt_comparison.png"))
 ```
-
 
 ## Performance by Condition
 
@@ -166,27 +164,15 @@ cond_tbl <- by_grp_cond |>
          `n incorrect` = total_incorrect)
 
 kable(cond_tbl,
-      caption = "Accuracy and reaction time (correct, incorrect, all trials) by group, phase, and condition. See Table 1 for condition coding.",
+      caption = "Accuracy and RT by group, phase, and condition.",
       align = c("l", "l", "l", "r", "r", "r", "r", "r"))
 ```
 
-```{r fig-cond, fig.cap="Accuracy (top) and reaction time on correct trials (bottom) at pre- and post-test by condition, separately for each group. See Table 1 for condition definitions. Error bars represent standard error of the mean."}
+```{r fig-cond, fig.cap="Accuracy (top) and RT (bottom) at pre- and post-test by condition, by group."}
 knitr::include_graphics(file.path(FIG_DIR, "fig4_condition.png"))
 ```
 
 ## Training Phase
-
-```{r training-overall, results='asis'}
-train_by_grp <- by_grp |> filter(phase == "training")
-for (i in seq_len(nrow(train_by_grp))) {
-  row <- train_by_grp[i, ]
-  cat(sprintf(
-    "During training, %s speakers reached an overall accuracy of %s (RT~correct~ = %s, RT~incorrect~ = %s).\n\n",
-    row$group, fmt_pct(row$accuracy),
-    fmt_rt(row$rt_correct), fmt_rt(row$rt_incorrect)
-  ))
-}
-```
 
 ```{r training-cond-table}
 train_cond_tbl <- by_grp_train_cond |>
@@ -202,19 +188,273 @@ train_cond_tbl <- by_grp_train_cond |>
          `n incorrect` = total_incorrect)
 
 kable(train_cond_tbl,
-      caption = "Training accuracy and reaction time (correct, incorrect, all trials) by group and condition.",
+      caption = "Training accuracy and RT by group and condition.",
       align = c("l", "l", "r", "r", "r", "r", "r"))
 ```
 
-```{r fig-train-cond, fig.cap="Training accuracy (left) and reaction time on correct trials (right) by condition and group. Error bars represent standard error of the mean. Dashed line indicates chance performance."}
+```{r fig-train-cond, fig.cap="Training accuracy (left) and RT (right) by condition and group."}
 knitr::include_graphics(file.path(FIG_DIR, "fig5_training_condition.png"))
 ```
 
-```{r fig-train-curve, fig.cap="Training phase accuracy (left) and reaction time on correct trials (right) across 10-trial bins by group. Error bars represent standard error of the mean."}
+```{r fig-train-curve, fig.cap="Training phase accuracy (left) and RT (right) across 10-trial bins by group."}
 knitr::include_graphics(file.path(FIG_DIR, "fig3_training_curve.png"))
 ```
 
-## Per-Participant Summary
+# Statistical Analysis
+
+```{r glmm-fit-table, eval=has_glmm}
+kable(glmm$r2_summary,
+      caption = "Goodness of fit for each primary model.",
+      col.names = c("Model", "Marginal R²", "Conditional R²"))
+```
+
+## Accuracy (Pre/Post)
+
+```{r acc-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "accuracy") |>
+  select(-model) |>
+  relabel_terms() |>
+  kable(caption = "Accuracy model: fixed-effect estimates (log-odds scale). Condition labels: stress / N (noun match) / V (verb match), where + = Match and − = Mismatch.",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r acc-predicted, eval=has_glmm}
+glmm$interp_acc |>
+  dplyr::select(group, phase, predicted_pct, CI_pct) |>
+  kable(caption = "Predicted accuracy by group and phase.",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+```{r fig-pred-acc, fig.cap="Model-predicted accuracy by group and phase."}
+knitr::include_graphics(file.path(GLMM_DIR, "pred_accuracy.png"))
+```
+
+```{r acc-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("accuracy", "group", glmm$nmc_all)
+nmc_phase <- get_nmc("accuracy", "phase", glmm$nmc_all)
+nmc_int   <- get_nmc("accuracy", "group:phase", glmm$nmc_all)
+nmc_cond  <- get_nmc("accuracy", "cond_name", glmm$nmc_all)
+
+cat("**Effects on accuracy (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p)))
+cat(sprintf("- Group × Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+cat(sprintf("- Condition: χ²(%d) = %s, *p* %s\n\n",
+            nmc_cond$df, fmt_chi(nmc_cond$chisq), fmt_p_apa(nmc_cond$p)))
+
+cat("**Direction:** L2 accuracy increased from pre to post; L1 accuracy was stable. Condition main effect present.\n\n")
+```
+
+## Reaction Time (Pre/Post)
+
+```{r rt-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "rt") |>
+  select(-model) |>
+  relabel_terms() |>
+  kable(caption = "RT model: fixed-effect estimates (1/RT scale; positive β = faster). Condition labels: stress / N / V, where + = Match and − = Mismatch.",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r rt-predicted, eval=has_glmm}
+glmm$interp_rt |>
+  dplyr::select(group, phase, predicted_ms, CI_ms) |>
+  kable(caption = "Predicted RT by group and phase (back-transformed from 1/RT).",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+```{r fig-pred-rt, fig.cap="Model-predicted RT by group and phase."}
+knitr::include_graphics(file.path(GLMM_DIR, "pred_rt.png"))
+```
+
+```{r rt-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("rt", "group", glmm$nmc_all)
+nmc_phase <- get_nmc("rt", "phase", glmm$nmc_all)
+nmc_int   <- get_nmc("rt", "group:phase", glmm$nmc_all)
+nmc_cond  <- get_nmc("rt", "cond_name", glmm$nmc_all)
+
+cat("**Effects on RT (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p)))
+cat(sprintf("- Group × Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+cat(sprintf("- Condition: χ²(%d) = %s, *p* %s\n\n",
+            nmc_cond$df, fmt_chi(nmc_cond$chisq), fmt_p_apa(nmc_cond$p)))
+
+cat("**Direction:** L1 faster than L2 overall. Both groups faster at post than at pre. Condition main effect present.\n\n")
+```
+
+## Training (Growth Curve)
+
+```{r train-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "training") |>
+  select(-model) |>
+  kable(caption = "Training model: fixed-effect estimates (log-odds scale).",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r fig-train-traj, fig.cap="Per-participant predicted training trajectories from the growth-curve GLMM."}
+knitr::include_graphics(file.path(GLMM_DIR, "training_trajectories.png"))
+```
+
+```{r train-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("training", "group", glmm$nmc_all)
+nmc_trial <- get_nmc("training", "trial_z", glmm$nmc_all)
+nmc_int   <- get_nmc("training", "group:trial_z", glmm$nmc_all)
+
+cat("**Effects on training accuracy (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Trial: χ²(%d) = %s, *p* %s\n",
+            nmc_trial$df, fmt_chi(nmc_trial$chisq), fmt_p_apa(nmc_trial$p)))
+cat(sprintf("- Group × Trial: χ²(%d) = %s, *p* %s\n\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+
+cat("**Direction:** L1 higher accuracy than L2 throughout training. Trial effect not significant. No group × trial interaction.\n\n")
+```
+
+## Forest Plot of Primary Fixed Effects
+
+```{r fig-forest, fig.cap="Fixed-effect estimates from the three primary models with 95% CIs. Condition main effects omitted."}
+knitr::include_graphics(file.path(GLMM_DIR, "forest_plot.png"))
+```
+
+# Follow-Up: Prediction Strategies
+
+Follow-up analyses test whether participants used the two F0/stress cues in the stimuli for online prediction. **Verb match** tests whether the verb's stress pattern was used to predict the suffix (mismatch = prediction error at suffix). **Noun match** tests whether the noun's F0 contour was used to predict the upcoming verb (mismatch = prediction error at verb). Each factor was tested in a separate model that included the other two factors (verb stress, the other match factor) as additive controls. The full 3-way interaction with group and phase was tested, along with its component 2-way interactions.
+
+## Verb match (suffix prediction)
+
+```{r fig-followup-rt-vm, fig.cap="Model-predicted RT by verb match (suffix prediction), group, and phase.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_verbmatch.png"))
+```
+
+```{r fig-followup-acc-vm, fig.cap="Model-predicted accuracy by verb match, group, and phase.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_acc_verbmatch.png"))
+```
+
+```{r fig-cost, fig.cap="Model-derived RT mismatch cost (mismatch − match, in ms) by group and phase. Positive values = mismatch slower than match (prediction surprise).", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_model_cost.png"))
+```
+
+```{r cost-table, eval=has_followup}
+followup$cost_data |>
+  mutate(across(c(Match, Mismatch, cost_ms), \(x) round(x, 1))) |>
+  kable(caption = "Model-derived RT values (ms) and mismatch cost by factor, group, and phase.",
+        col.names = c("Factor", "Group", "Phase", "Match (ms)", "Mismatch (ms)", "Cost (ms)"))
+```
+
+```{r vm-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_verbmatch", "rt_verbmatch")) |>
+  kable(caption = "Verb-match follow-up: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r vm-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_verbmatch", "group:phase:verb_match", followup$nmc_followup)
+nmc_acc_g    <- get_nmc("acc_verbmatch", "group:verb_match",       followup$nmc_followup)
+nmc_acc_p    <- get_nmc("acc_verbmatch", "phase:verb_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_verbmatch",  "group:phase:verb_match", followup$nmc_followup)
+nmc_rt_g     <- get_nmc("rt_verbmatch",  "group:verb_match",       followup$nmc_followup)
+nmc_rt_p     <- get_nmc("rt_verbmatch",  "phase:verb_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_g$df, fmt_chi(nmc_acc_g$chisq), fmt_p_apa(nmc_acc_g$p)))
+cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_p$df, fmt_chi(nmc_acc_p$chisq), fmt_p_apa(nmc_acc_p$p)))
+cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_g$df, fmt_chi(nmc_rt_g$chisq), fmt_p_apa(nmc_rt_g$p)))
+cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_p$df, fmt_chi(nmc_rt_p$chisq), fmt_p_apa(nmc_rt_p$p)))
+cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction n.s.).\n\n")
+```
+
+## Noun match (verb prediction)
+
+```{r fig-followup-rt-nm, fig.cap="Model-predicted RT by noun match (verb prediction), group, and phase.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_rt_nounmatch.png"))
+```
+
+```{r fig-followup-acc-nm, fig.cap="Model-predicted accuracy by noun match, group, and phase.", eval=has_followup}
+knitr::include_graphics(file.path(GLMM_DIR, "followup_acc_nounmatch.png"))
+```
+
+```{r nm-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_nounmatch", "rt_nounmatch")) |>
+  kable(caption = "Noun-match follow-up: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r nm-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_nounmatch", "group:phase:noun_match", followup$nmc_followup)
+nmc_acc_g    <- get_nmc("acc_nounmatch", "group:noun_match",       followup$nmc_followup)
+nmc_acc_p    <- get_nmc("acc_nounmatch", "phase:noun_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_nounmatch",  "group:phase:noun_match", followup$nmc_followup)
+nmc_rt_g     <- get_nmc("rt_nounmatch",  "group:noun_match",       followup$nmc_followup)
+nmc_rt_p     <- get_nmc("rt_nounmatch",  "phase:noun_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_g$df, fmt_chi(nmc_acc_g$chisq), fmt_p_apa(nmc_acc_g$p)))
+cat(sprintf("- Phase × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_p$df, fmt_chi(nmc_acc_p$chisq), fmt_p_apa(nmc_acc_p$p)))
+cat(sprintf("- Group × Phase × noun match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_g$df, fmt_chi(nmc_rt_g$chisq), fmt_p_apa(nmc_rt_g$p)))
+cat(sprintf("- Phase × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_p$df, fmt_chi(nmc_rt_p$chisq), fmt_p_apa(nmc_rt_p$p)))
+cat(sprintf("- Group × Phase × noun match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction:** No noun-match effects reached significance in either accuracy or RT.\n\n")
+```
+
+# Diagnostics
+
+```{r diag-table, eval=has_glmm}
+glmm$diagnostics_summary |>
+  kable(caption = "DHARMa diagnostic summary. Dispersion p > .05 = adequate variance fit. KS p-values are oversensitive at large n; QQ-plots were inspected visually.",
+        col.names = c("Model", "KS p", "Dispersion", "Dispersion p"))
+```
+
+```{r diag-acc, fig.cap="DHARMa diagnostics: accuracy model."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_accuracy.png"))
+```
+
+```{r diag-rt, fig.cap="DHARMa diagnostics: RT model (1/RT scale)."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_rt.png"))
+```
+
+```{r diag-train, fig.cap="DHARMa diagnostics: training growth-curve model."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_training.png"))
+```
+
+# Per-Participant Summary
 
 ```{r pp-table}
 pp_tbl <- by_pp |>
@@ -230,7 +470,7 @@ pp_tbl <- by_pp |>
          Accuracy, `RT correct`, `RT incorrect`, `RT all`)
 
 kable(pp_tbl,
-      caption = "Per-participant accuracy and reaction time (correct, incorrect, all trials) by phase.",
+      caption = "Per-participant accuracy and RT by phase.",
       align = c("r", "l", "l", "r", "r", "r", "r", "r", "r"))
 ```
 
@@ -239,3 +479,4 @@ kable(pp_tbl,
 ```{r session, echo=FALSE}
 sessionInfo()
 ```
+

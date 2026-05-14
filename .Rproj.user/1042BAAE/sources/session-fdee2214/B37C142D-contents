@@ -47,6 +47,7 @@ n_l2 <- long |> filter(group == "L2") |> pull(participant) |> n_distinct()
 FIG_DIR  <- "~/Desktop/SP26_data/behavioral_output"
 GLMM_DIR <- "~/Desktop/SP26_data/behavioral_output/glmm"
 
+# Load GLMM results if they exist
 glmm_path <- file.path(GLMM_DIR, "glmm_results.rds")
 followup_path <- file.path(GLMM_DIR, "glmm_followup_results.rds")
 has_glmm     <- file.exists(glmm_path)
@@ -59,27 +60,6 @@ fmt_p_apa <- function(x) ifelse(x < .001, "< .001",
                                 sub("^0", "", sprintf("= %.3f", x)))
 get_nmc <- function(model_name, effect_name, src) {
   src |> filter(model == model_name, effect == effect_name) |> slice(1)
-}
-
-# Informative labels for sum-coded condition coefficients
-# Order matches COND_NAME_ORDER in script.R:
-# 1: parox_nounmatch_verbmatch     (a)
-# 2: parox_nounmismatch_verbmatch  (d)
-# 3: parox_nounmatch_verbmismatch  (c)
-# 4: oxy_nounmatch_verbmatch       (f)
-# 5: oxy_nounmismatch_verbmatch    (b)
-# 6: oxy_nounmatch_verbmismatch    (e) -- reference (not in table)
-COND_NAME_LABELS <- c(
-  "cond_name1" = "parox / N+ / V+",
-  "cond_name2" = "parox / N− / V+",
-  "cond_name3" = "parox / N+ / V−",
-  "cond_name4" = "oxy / N+ / V+",
-  "cond_name5" = "oxy / N− / V+"
-)
-
-relabel_terms <- function(df) {
-  df |>
-    dplyr::mutate(term = dplyr::recode(term, !!!COND_NAME_LABELS))
 }
 ```
 
@@ -113,9 +93,7 @@ kable(cond_legend_training,
 
 Reaction time was analyzed on correct trials, incorrect trials, and all trials, with bounds 200–5000 ms. Group means were computed by averaging within participant first, then across participants.
 
-Inferential analyses were run with generalized linear mixed-effects models (`lme4`). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
-
-In sum-coded factor tables, condition labels use the format `stress / N± / V±` where `N+/V+` = match and `N−/V−` = mismatch. The reference cell (not shown in tables) is `oxy / N+ / V−`; its β equals the negative sum of the other five coefficients.
+Inferential analyses were run with generalized linear mixed-effects models (`lme4`) following Casillas (2025). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
 
 # Results
 
@@ -214,8 +192,7 @@ kable(glmm$r2_summary,
 glmm$fixed_all |>
   filter(model == "accuracy") |>
   select(-model) |>
-  relabel_terms() |>
-  kable(caption = "Accuracy model: fixed-effect estimates (log-odds scale). Condition labels: stress / N (noun match) / V (verb match), where + = Match and − = Mismatch.",
+  kable(caption = "Accuracy model: fixed-effect estimates (log-odds scale).",
         col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
         digits = 3)
 ```
@@ -256,8 +233,7 @@ cat("**Direction:** L2 accuracy increased from pre to post; L1 accuracy was stab
 glmm$fixed_all |>
   filter(model == "rt") |>
   select(-model) |>
-  relabel_terms() |>
-  kable(caption = "RT model: fixed-effect estimates (1/RT scale; positive β = faster). Condition labels: stress / N / V, where + = Match and − = Mismatch.",
+  kable(caption = "RT model: fixed-effect estimates (1/RT scale; positive β = faster).",
         col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
         digits = 3)
 ```
@@ -479,4 +455,3 @@ kable(pp_tbl,
 ```{r session, echo=FALSE}
 sessionInfo()
 ```
-

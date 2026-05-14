@@ -1,5 +1,21 @@
 {
     "debugBreakpointsState": {
-        "breakpoints": []
+        "breakpoints": [
+            {
+                "id": 1,
+                "path": "~/Desktop/SP26_EEG/statistical_analysis.R",
+                "line_number": 370,
+                "function_steps": "",
+                "function_name": "toplevel",
+                "state": 1,
+                "editor_state": 1,
+                "editor_line_number": 370,
+                "is_pending_debug_completion": false,
+                "needs_updated_steps": true,
+                "type": 1,
+                "is_package_breakpoint": false,
+                "package_name": ""
+            }
+        ]
     }
 }

@@ -1,0 +1,1053 @@
+# ============================================================
+# Statistical analysis: StressLearning2025
+# GLMMs for accuracy and RT, growth curve for training
+# Following Casillas (ds4ling) framework: lme4, sum contrasts,
+# nested model comparisons, DHARMa diagnostics
+# ============================================================
+
+library(tidyverse)
+library(lme4)
+library(lmerTest)        # gives p-values for lmer (Satterthwaite df)
+library(DHARMa)          # GLMM residual diagnostics
+library(MuMIn)           # marginal & conditional R^2
+library(broom.mixed)     # tidy() for mixed models
+library(ggeffects)       # model-predicted means
+library(openxlsx)
+library(fs)
+library(openxlsx)
+library(patchwork)
+
+# ---- CONFIG -------------------------------------------------
+DATA_DIR   <- "~/Desktop/SP26_data/2_psychopy_data"
+OUTPUT_DIR <- "~/Desktop/SP26_data/behavioral_output"
+GLMM_DIR   <- path(OUTPUT_DIR, "glmm")
+RT_LOWER   <- 0.200
+RT_UPPER   <- 5.000
+
+dir_create(GLMM_DIR)
+
+# ---- Re-source the data prep from the descriptive script ----
+# We need the long-format trial data. Rather than duplicate the
+# extraction code, source script.R (which runs main() and leaves
+# `res$long` in the environment).
+source("script.R")
+long <- res$long
+
+# =============================================================
+# SECTION 1: DATA PREP
+# =============================================================
+# - Set factor levels
+# - Apply sum-to-zero contrasts (Casillas-style, for factorial designs)
+# - Extract item ID from sound filename
+# - Build separate testing and training datasets
+
+# Extract item ID (the "01" in "x_01a_buscar.wav" or "t_01a_bajar_cut.wav")
+long <- long |>
+  mutate(
+    sound_for_item = coalesce(sounds, sounds_stem),
+    item = str_extract(sound_for_item, "(?<=[xt]_)\\d{2}")
+  )
+
+# Testing data: pre + post phases
+long_testing <- long |>
+  filter(phase %in% c("pre", "post"), !is.na(cond_name), !is.na(item)) |>
+  mutate(
+    group     = factor(group, levels = c("L1", "L2")),
+    phase     = factor(phase, levels = c("pre", "post")),
+    cond_name = factor(cond_name, levels = COND_NAME_ORDER),
+    item      = factor(item),
+    participant = factor(participant)
+  )
+
+# Sum-to-zero contrasts (effect coding)
+contrasts(long_testing$group)     <- contr.sum(2)
+contrasts(long_testing$phase)     <- contr.sum(2)
+contrasts(long_testing$cond_name) <- contr.sum(6)
+
+# Training data
+long_training <- long |>
+  filter(phase == "training", !is.na(cond_name), !is.na(item)) |>
+  mutate(
+    group       = factor(group, levels = c("L1", "L2")),
+    cond_name   = factor(cond_name, levels = c("parox", "oxy")),
+    item        = factor(item),
+    participant = factor(participant),
+    trial_z     = as.numeric(scale(trial))  # standardize for the growth curve
+  )
+
+contrasts(long_training$group)     <- contr.sum(2)
+contrasts(long_training$cond_name) <- contr.sum(2)
+
+message("Testing data:  ", nrow(long_testing), " trials, ",
+        n_distinct(long_testing$participant), " participants, ",
+        n_distinct(long_testing$item), " items")
+message("Training data: ", nrow(long_training), " trials, ",
+        n_distinct(long_training$participant), " participants, ",
+        n_distinct(long_training$item), " items")
+
+# =============================================================
+# SECTION 2: MODELS
+# =============================================================
+# Path A: simplified fixed structure (group*phase + cond_name)
+# Random: (1 + phase | participant) + (1 | item)
+# Optimizer fallback for convergence issues
+
+ctrl_bin <- glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+
+# --- Model 1: Accuracy (testing) ---
+message("\n=== Fitting Model 1: Accuracy (testing) ===")
+mod_acc <- glmer(
+  corr ~ group * phase + cond_name +
+    (1 + phase | participant) + (1 | item),
+  data    = long_testing,
+  family  = binomial(link = "logit"),
+  control = ctrl_bin
+)
+
+# --- Model 2: RT (testing, correct only) ---
+message("\n=== Fitting Model 2: RT (testing, correct only) ===")
+long_testing_rt <- filter(long_testing, !is.na(rt_correct), rt_correct > 0)
+mod_rt <- lmer(
+  I(1/rt_correct) ~ group * phase + cond_name +
+    (1 + phase | participant) + (1 | item),
+  data    = long_testing_rt
+)
+
+# --- Model 3: Training (growth curve) ---
+message("\n=== Fitting Model 3: Training growth curve ===")
+mod_training <- glmer(
+  corr ~ group * trial_z +
+    (1 + trial_z | participant) + (1 | item),
+  data    = long_training,
+  family  = binomial(link = "logit"),
+  control = ctrl_bin
+)
+
+# =============================================================
+# SECTION 3: DIAGNOSTICS
+# =============================================================
+# DHARMa scaled residuals (the GLMM analog of Casillas's lm() residual checks)
+
+run_diagnostics <- function(mod, label) {
+  message("\n--- Diagnostics: ", label, " ---")
+  sim <- simulateResiduals(mod, n = 1000)
+
+  # Save DHARMa summary plot (the headline "is the model OK?" figure)
+  png(path(GLMM_DIR, paste0("dharma_", label, ".png")),
+      width = 1200, height = 600, res = 120)
+  plot(sim)
+  dev.off()
+
+  # Tests
+  ks   <- testUniformity(sim, plot = FALSE)
+  disp <- testDispersion(sim, plot = FALSE)
+
+  data.frame(
+    model = label,
+    KS_pvalue = signif(ks$p.value, 3),
+    dispersion = signif(disp$statistic, 3),
+    dispersion_p = signif(disp$p.value, 3)
+  )
+}
+
+diag_acc      <- run_diagnostics(mod_acc, "accuracy")
+diag_rt       <- run_diagnostics(mod_rt, "rt")
+diag_training <- run_diagnostics(mod_training, "training")
+
+diagnostics_summary <- bind_rows(diag_acc, diag_rt, diag_training)
+print(diagnostics_summary)
+
+plot(simulateResiduals(mod_rt))
+# =============================================================
+# SECTION 4: NESTED MODEL COMPARISONS
+# =============================================================
+# ----- Accuracy model NMC -------------------------------------
+mod_acc_no_int   <- update(mod_acc, . ~ . - group:phase)
+mod_acc_no_cond  <- update(mod_acc, . ~ . - cond_name)
+mod_acc_no_group <- update(mod_acc_no_int, . ~ . - group)
+mod_acc_no_phase <- update(mod_acc_no_int, . ~ . - phase)
+
+anova_acc_int   <- anova(mod_acc_no_int,   mod_acc)
+anova_acc_cond  <- anova(mod_acc_no_cond,  mod_acc)
+anova_acc_group <- anova(mod_acc_no_group, mod_acc_no_int)
+anova_acc_phase <- anova(mod_acc_no_phase, mod_acc_no_int)
+
+nmc_acc <- bind_rows(
+  data.frame(model = "accuracy", effect = "group:phase",
+             chisq = round(anova_acc_int$Chisq[2],   2),
+             df    = anova_acc_int$Df[2],
+             p     = signif(anova_acc_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "accuracy", effect = "cond_name",
+             chisq = round(anova_acc_cond$Chisq[2],  2),
+             df    = anova_acc_cond$Df[2],
+             p     = signif(anova_acc_cond$`Pr(>Chisq)`[2],  3)),
+  data.frame(model = "accuracy", effect = "group",
+             chisq = round(anova_acc_group$Chisq[2], 2),
+             df    = anova_acc_group$Df[2],
+             p     = signif(anova_acc_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "accuracy", effect = "phase",
+             chisq = round(anova_acc_phase$Chisq[2], 2),
+             df    = anova_acc_phase$Df[2],
+             p     = signif(anova_acc_phase$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- RT model NMC -------------------------------------------
+# For lmer, need ML (not REML) for LRT to be valid
+mod_rt_ml         <- update(mod_rt, REML = FALSE)
+mod_rt_no_int     <- update(mod_rt_ml, . ~ . - group:phase)
+mod_rt_no_cond    <- update(mod_rt_ml, . ~ . - cond_name)
+mod_rt_no_group   <- update(mod_rt_no_int, . ~ . - group)
+mod_rt_no_phase   <- update(mod_rt_no_int, . ~ . - phase)
+
+anova_rt_int   <- anova(mod_rt_no_int,   mod_rt_ml)
+anova_rt_cond  <- anova(mod_rt_no_cond,  mod_rt_ml)
+anova_rt_group <- anova(mod_rt_no_group, mod_rt_no_int)
+anova_rt_phase <- anova(mod_rt_no_phase, mod_rt_no_int)
+
+nmc_rt <- bind_rows(
+  data.frame(model = "rt", effect = "group:phase",
+             chisq = round(anova_rt_int$Chisq[2],   2),
+             df    = anova_rt_int$Df[2],
+             p     = signif(anova_rt_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "rt", effect = "cond_name",
+             chisq = round(anova_rt_cond$Chisq[2],  2),
+             df    = anova_rt_cond$Df[2],
+             p     = signif(anova_rt_cond$`Pr(>Chisq)`[2],  3)),
+  data.frame(model = "rt", effect = "group",
+             chisq = round(anova_rt_group$Chisq[2], 2),
+             df    = anova_rt_group$Df[2],
+             p     = signif(anova_rt_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "rt", effect = "phase",
+             chisq = round(anova_rt_phase$Chisq[2], 2),
+             df    = anova_rt_phase$Df[2],
+             p     = signif(anova_rt_phase$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- Training model NMC -------------------------------------
+mod_train_no_int     <- update(mod_training,     . ~ . - group:trial_z)
+mod_train_no_group   <- update(mod_train_no_int, . ~ . - group)
+mod_train_no_trial   <- update(mod_train_no_int, . ~ . - trial_z)
+
+anova_train_int   <- anova(mod_train_no_int,   mod_training)
+anova_train_group <- anova(mod_train_no_group, mod_train_no_int)
+anova_train_trial <- anova(mod_train_no_trial, mod_train_no_int)
+
+nmc_train <- bind_rows(
+  data.frame(model = "training", effect = "group:trial_z",
+             chisq = round(anova_train_int$Chisq[2],   2),
+             df    = anova_train_int$Df[2],
+             p     = signif(anova_train_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "training", effect = "group",
+             chisq = round(anova_train_group$Chisq[2], 2),
+             df    = anova_train_group$Df[2],
+             p     = signif(anova_train_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "training", effect = "trial_z",
+             chisq = round(anova_train_trial$Chisq[2], 2),
+             df    = anova_train_trial$Df[2],
+             p     = signif(anova_train_trial$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- Combine all NMC results --------------------------------
+nmc_all <- bind_rows(nmc_acc, nmc_rt, nmc_train)
+print(nmc_all)
+
+# =============================================================
+# SECTION 5: FIXED EFFECTS TABLES (beta, SE, CI, p)
+# =============================================================
+get_fixed <- function(mod, label) {
+  tidy(mod, effects = "fixed", conf.int = TRUE) |>
+    dplyr::mutate(model = label,
+                  estimate = round(estimate, 3),
+                  std.error = round(std.error, 3),
+                  conf.low = round(conf.low, 3),
+                  conf.high = round(conf.high, 3),
+                  p.value = signif(p.value, 3)) |>
+    dplyr::select(model, term, estimate, std.error, conf.low, conf.high, p.value)
+}
+
+fixed_acc      <- get_fixed(mod_acc, "accuracy")
+fixed_rt       <- get_fixed(mod_rt, "rt")
+fixed_training <- get_fixed(mod_training, "training")
+fixed_all      <- bind_rows(fixed_acc, fixed_rt, fixed_training)
+print(fixed_all)
+
+# =============================================================
+# SECTION 6: MODEL FIT (marginal & conditional R^2)
+# =============================================================
+r2_acc      <- r.squaredGLMM(mod_acc)
+r2_rt       <- r.squaredGLMM(mod_rt)
+r2_training <- r.squaredGLMM(mod_training)
+
+# For binomial, r.squaredGLMM returns a matrix with theoretical & delta versions
+r2_summary <- data.frame(
+  model         = c("accuracy", "rt", "training"),
+  R2_marginal   = c(r2_acc[1, "R2m"],    r2_rt[1, "R2m"],    r2_training[1, "R2m"]),
+  R2_conditional= c(r2_acc[1, "R2c"],    r2_rt[1, "R2c"],    r2_training[1, "R2c"])
+) |>
+  mutate(across(starts_with("R2"), \(x) round(x, 3)))
+print(r2_summary)
+
+# =============================================================
+# SECTION 7: INTERPRETABLE EFFECTS (probabilities & ms)
+# =============================================================
+# For accuracy: report population-level predicted probabilities by group x phase
+# For RT: report population-level predicted RT in ms
+
+pred_acc <- ggpredict(mod_acc, terms = c("phase", "group"))
+pred_rt  <- ggpredict(mod_rt,  terms = c("phase", "group"))
+pred_train <- ggpredict(mod_training, terms = c("trial_z [all]", "group"))
+
+interp_acc <- as.data.frame(pred_acc) |>
+  rename(phase = x, group = group, predicted_prob = predicted,
+         CI_low = conf.low, CI_high = conf.high) |>
+  mutate(predicted_pct = sprintf("%.1f%%", 100 * predicted_prob),
+         CI_pct = sprintf("[%.1f%%, %.1f%%]", 100 * CI_low, 100 * CI_high))
+
+interp_rt <- as.data.frame(pred_rt) |>
+  rename(phase = x, group = group, predicted_speed = predicted,
+         CI_low = conf.low, CI_high = conf.high) |>
+  mutate(predicted_rt = 1/predicted_speed,                # back to seconds
+         CI_low_rt    = 1/CI_high,                        # note the swap
+         CI_high_rt   = 1/CI_low,                         # 1/x reverses ordering
+         predicted_ms = sprintf("%d ms", round(predicted_rt * 1000)),
+         CI_ms = sprintf("[%d, %d]",
+                         round(CI_low_rt * 1000),
+                         round(CI_high_rt * 1000)))
+
+# =============================================================
+# SECTION 8: PLOTS
+# =============================================================
+theme_set(theme_minimal(base_size = 12))
+
+# --- Plot 1: model-predicted means by group x phase ---
+p_pred_acc <- ggplot(as.data.frame(pred_acc),
+                     aes(x = x, y = predicted, colour = group, group = group)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high),
+                  position = position_dodge(0.2), size = 0.8) +
+  geom_line(position = position_dodge(0.2), linewidth = 0.8) +
+  coord_cartesian(ylim = c(0.94, 1.00)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     breaks = seq(0.94, 1.00, 0.01)) +
+  labs(title = "Model-predicted accuracy by group and phase",
+       x = "Phase", y = "Predicted P(correct)",
+       caption = "Error bars = 95% CI from GLMM. Y-axis zoomed to 94–100%.")
+ggsave(path(GLMM_DIR, "pred_accuracy.png"), p_pred_acc,
+       width = 7, height = 5, dpi = 150)
+
+p_pred_rt <- ggplot(as.data.frame(pred_rt),
+                    aes(x = x, y = (1/predicted) * 1000,
+                        colour = group, group = group)) +
+  geom_pointrange(aes(ymin = (1/conf.high) * 1000,   # note swap
+                      ymax = (1/conf.low) * 1000),
+                  position = position_dodge(0.2), size = 0.8) +
+  geom_line(position = position_dodge(0.2)) +
+  labs(title = "Model-predicted RT by group and phase",
+       x = "Phase", y = "Predicted RT (ms)",
+       caption = "Error bars = 95% CI from GLMM (Gamma-log)")
+ggsave(path(GLMM_DIR, "pred_rt.png"), p_pred_rt,
+       width = 7, height = 5, dpi = 150)
+
+# --- Plot 2: sleepstudy-style trajectories (training) ---
+# Per-participant predicted curves from the training model
+train_pred <- long_training |>
+  mutate(fitted = fitted(mod_training))
+
+p_train_traj <- ggplot(train_pred, aes(x = trial, y = fitted,
+                                      group = participant, colour = group)) +
+  geom_line(alpha = 0.5, linewidth = 0.5) +
+  facet_wrap(~ group) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+  coord_cartesian(ylim = c(0, 1.05)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Training trajectories: per-participant model fits",
+       x = "Trial number", y = "Predicted P(correct)",
+       caption = "Each line = one participant's fitted curve from the growth-curve GLMM")
+ggsave(path(GLMM_DIR, "training_trajectories.png"), p_train_traj,
+       width = 10, height = 5, dpi = 150)
+
+# --- Plot 3: forest plot of fixed effects ---
+trial_grid <- seq(min(long_training$trial_z), max(long_training$trial_z),
+                   length.out = 60)
+pred_traj <- expand.grid(
+  participant = unique(long_training$participant),
+  trial_z     = trial_grid
+) |>
+  dplyr::left_join(
+    long_training |> dplyr::distinct(participant, group),
+    by = "participant"
+  )
+pred_traj$fitted <- predict(mod_training,
+                            newdata = pred_traj,
+                            re.form = ~ (1 + trial_z | participant),
+                            type    = "response",
+                            allow.new.levels = TRUE)
+trial_mean <- mean(long_training$trial)
+trial_sd   <- sd(long_training$trial)
+pred_traj$trial <- pred_traj$trial_z * trial_sd + trial_mean
+
+p_train_traj <- ggplot(pred_traj,
+                       aes(x = trial, y = fitted,
+                           group = participant, colour = group)) +
+  geom_line(alpha = 0.6, linewidth = 0.7) +
+  facet_wrap(~ group) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_colour_manual(values = c(L1 = "#e41a1c", L2 = "#377eb8")) +
+  labs(title = "Per-participant predicted training trajectories",
+       x = "Trial number", y = "Predicted P(correct)",
+       caption = "Each line = one participant's growth-curve fit from the GLMM (item-level noise removed).") +
+  theme(legend.position = "none")
+ggsave(path(GLMM_DIR, "training_trajectories.png"), p_train_traj,
+       width = 10, height = 5, dpi = 150)
+
+# --- Plot 4: focused forest plot of key effects only ---
+key_effects <- fixed_all |>
+  dplyr::filter(term %in% c("group1", "phase1", "group1:phase1",
+                            "trial_z", "group1:trial_z")) |>
+  dplyr::mutate(
+    label = dplyr::recode(term,
+                          "group1"         = "Group (L1 vs L2)",
+                          "phase1"         = "Phase (pre vs post)",
+                          "group1:phase1"  = "Group × Phase",
+                          "trial_z"        = "Trial",
+                          "group1:trial_z" = "Group × Trial"),
+    sig = dplyr::case_when(p.value < .001 ~ "p < .001",
+                           p.value < .01  ~ "p < .01",
+                           p.value < .05  ~ "p < .05",
+                           TRUE           ~ "n.s."),
+    sig = factor(sig, levels = c("p < .001", "p < .01", "p < .05", "n.s.")),
+    model = factor(model, levels = c("accuracy", "rt", "training"),
+                   labels = c("Accuracy\n(log-odds)",
+                              "RT\n(1/RT scale)",
+                              "Training\n(log-odds)"))
+  )
+
+p_forest <- ggplot(key_effects,
+                   aes(x = estimate, y = label, colour = sig)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_pointrange(aes(xmin = conf.low, xmax = conf.high),
+                  size = 0.9, linewidth = 1.1) +
+  facet_wrap(~ model, scales = "free_x", ncol = 1) +
+  scale_colour_manual(values = c("p < .001" = "#cc0000",
+                                 "p < .01"  = "#ee7700",
+                                 "p < .05"  = "#ffaa00",
+                                 "n.s."     = "grey50"),
+                      drop = FALSE) +
+  labs(title = "Key fixed-effect estimates (β with 95% CI)",
+       subtitle = "Condition main effects omitted; effects centered at 0 = no effect",
+       x = "Estimate", y = NULL, colour = "Significance") +
+  theme(strip.text = element_text(face = "bold"),
+        axis.text.y = element_text(size = 10))
+ggsave(path(GLMM_DIR, "forest_plot.png"), p_forest,
+       width = 9, height = 8, dpi = 150)
+# =============================================================
+# SECTION 9: SAVE EVERYTHING
+# =============================================================
+write.xlsx(
+  list(
+    fixed_effects        = fixed_all,
+    nested_comparisons   = nmc_all,
+    model_fit_R2         = r2_summary,
+    diagnostics_summary  = diagnostics_summary,
+    predicted_accuracy   = interp_acc,
+    predicted_rt         = interp_rt
+  ),
+  path(GLMM_DIR, "glmm_results.xlsx"),
+  overwrite = TRUE
+)
+
+saveRDS(list(
+  mod_acc = mod_acc, mod_rt = mod_rt, mod_training = mod_training,
+  fixed_all = fixed_all, nmc_all = nmc_all, r2_summary = r2_summary,
+  diagnostics_summary = diagnostics_summary,
+  interp_acc = interp_acc, interp_rt = interp_rt,
+  pred_acc = pred_acc, pred_rt = pred_rt, pred_train = pred_train
+), path(GLMM_DIR, "glmm_results.rds"))
+
+message("\nAll GLMM outputs saved to: ", GLMM_DIR)
+message("- glmm_results.xlsx (tables)")
+message("- glmm_results.rds (full objects for Rmd)")
+message("- pred_accuracy.png, pred_rt.png, training_trajectories.png, forest_plot.png")
+message("- dharma_*.png (one per model)")
+
+# ============================================================
+# Descriptive analysis: prediction-strategy factors
+# verb_stress, verb_match, noun_match × group × phase
+# Goal: see if there's evidence of prediction-related effects
+# before running formal models
+# ============================================================
+
+OUTPUT_DIR <- "~/Desktop/SP26_data/behavioral_output"
+FACTOR_DIR <- path(OUTPUT_DIR, "factor_descriptives")
+dir_create(FACTOR_DIR)
+
+# Assumes long_testing already exists from sourcing script.R
+# (verb_stress, verb_match, noun_match should already be columns)
+
+# Make sure factor levels are consistent
+long_factors <- long_testing |>
+  dplyr::mutate(
+    verb_stress = factor(verb_stress, levels = c("paroxytone", "oxytone")),
+    verb_match  = factor(verb_match,  levels = c("Match", "Mismatch")),
+    noun_match  = factor(noun_match,  levels = c("Match", "Mismatch")),
+    phase       = factor(phase,       levels = c("pre", "post")),
+    group       = factor(group,       levels = c("L1", "L2"))
+  )
+
+# --- Two-step participant summary helper ---
+# Average within participant first, then across participants per group
+summarize_factor <- function(data, factor_var) {
+  factor_sym <- rlang::sym(factor_var)
+  by_p <- data |>
+    dplyr::group_by(participant, group, phase, !!factor_sym) |>
+    dplyr::summarise(
+      accuracy   = mean(corr, na.rm = TRUE),
+      rt_correct = mean(rt_correct, na.rm = TRUE),
+      n_trials   = dplyr::n(),
+      .groups    = "drop"
+    )
+  by_p |>
+    dplyr::group_by(group, phase, !!factor_sym) |>
+    dplyr::summarise(
+      mean_acc = mean(accuracy, na.rm = TRUE),
+      se_acc   = sd(accuracy, na.rm = TRUE) / sqrt(dplyr::n()),
+      mean_rt  = mean(rt_correct, na.rm = TRUE),
+      se_rt    = sd(rt_correct, na.rm = TRUE) / sqrt(dplyr::n()),
+      n_participants = dplyr::n(),
+      .groups  = "drop"
+    )
+}
+
+# --- Tables for each factor ---
+desc_stress    <- summarize_factor(long_factors, "verb_stress")
+desc_verbmatch <- summarize_factor(long_factors, "verb_match")
+desc_nounmatch <- summarize_factor(long_factors, "noun_match")
+
+cat("\n--- Verb stress × group × phase ---\n")
+print(desc_stress)
+cat("\n--- Verb match × group × phase ---\n")
+print(desc_verbmatch)
+cat("\n--- Noun match × group × phase ---\n")
+print(desc_nounmatch)
+
+# --- Mismatch cost: difference between mismatch and match ---
+# This is the "surprise" effect — what we care about theoretically
+mismatch_cost <- function(data, factor_var) {
+  factor_sym <- rlang::sym(factor_var)
+  by_p <- data |>
+    dplyr::group_by(participant, group, phase, !!factor_sym) |>
+    dplyr::summarise(
+      accuracy   = mean(corr, na.rm = TRUE),
+      rt_correct = mean(rt_correct, na.rm = TRUE),
+      .groups    = "drop"
+    ) |>
+    tidyr::pivot_wider(names_from = !!factor_sym,
+                       values_from = c(accuracy, rt_correct))
+  by_p |>
+    dplyr::mutate(
+      acc_cost = accuracy_Match - accuracy_Mismatch,    # positive = mismatch hurt accuracy
+      rt_cost  = rt_correct_Mismatch - rt_correct_Match # positive = mismatch slowed RT
+    ) |>
+    dplyr::group_by(group, phase) |>
+    dplyr::summarise(
+      mean_acc_cost = mean(acc_cost, na.rm = TRUE),
+      se_acc_cost   = sd(acc_cost, na.rm = TRUE) / sqrt(dplyr::n()),
+      mean_rt_cost  = mean(rt_cost, na.rm = TRUE) * 1000,  # ms
+      se_rt_cost    = sd(rt_cost, na.rm = TRUE) / sqrt(dplyr::n()) * 1000,
+      .groups       = "drop"
+    )
+}
+
+cost_verbmatch <- mismatch_cost(long_factors, "verb_match")
+cost_nounmatch <- mismatch_cost(long_factors, "noun_match")
+
+cat("\n--- Verb mismatch COST (mismatch vs match) ---\n")
+cat("Positive acc cost = mismatch hurt accuracy\n")
+cat("Positive rt cost (ms) = mismatch slowed RT\n")
+print(cost_verbmatch)
+cat("\n--- Noun mismatch COST (mismatch vs match) ---\n")
+print(cost_nounmatch)
+
+# =============================================================
+# PLOTS
+# =============================================================
+theme_set(theme_minimal(base_size = 12))
+
+# Plot helper: 2-panel (acc + RT) for one factor
+plot_factor <- function(desc_data, factor_var, factor_label, filename) {
+  factor_sym <- rlang::sym(factor_var)
+  
+  p_acc <- ggplot(desc_data,
+                  aes(x = phase, y = mean_acc, colour = !!factor_sym,
+                      group = !!factor_sym)) +
+    geom_pointrange(aes(ymin = mean_acc - se_acc, ymax = mean_acc + se_acc),
+                    position = position_dodge(0.2), size = 0.7) +
+    geom_line(position = position_dodge(0.2), linewidth = 0.8) +
+    facet_wrap(~ group) +
+    coord_cartesian(ylim = c(0.85, 1.00)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    labs(title = paste("Accuracy by", factor_label),
+         x = "Phase", y = "Mean accuracy", colour = factor_label)
+  
+  p_rt <- ggplot(desc_data,
+                 aes(x = phase, y = mean_rt * 1000, colour = !!factor_sym,
+                     group = !!factor_sym)) +
+    geom_pointrange(aes(ymin = (mean_rt - se_rt) * 1000,
+                        ymax = (mean_rt + se_rt) * 1000),
+                    position = position_dodge(0.2), size = 0.7) +
+    geom_line(position = position_dodge(0.2), linewidth = 0.8) +
+    facet_wrap(~ group) +
+    labs(title = paste("RT by", factor_label),
+         x = "Phase", y = "Mean RT (ms)", colour = factor_label)
+  
+  combined <- p_acc / p_rt
+  ggsave(path(FACTOR_DIR, filename), combined,
+         width = 10, height = 8, dpi = 150)
+  print(combined)
+}
+
+plot_factor(desc_stress,    "verb_stress", "Verb stress (parox vs oxy)",
+            "factor_verb_stress.png")
+plot_factor(desc_verbmatch, "verb_match",  "Verb match (predicting suffix)",
+            "factor_verb_match.png")
+plot_factor(desc_nounmatch, "noun_match",  "Noun match (predicting verb)",
+            "factor_noun_match.png")
+
+# --- Mismatch cost plot (the key visualization for prediction effects) ---
+cost_long <- bind_rows(
+  cost_verbmatch |> dplyr::mutate(factor = "Verb match\n(suffix prediction)"),
+  cost_nounmatch |> dplyr::mutate(factor = "Noun match\n(verb prediction)")
+)
+
+p_cost_acc <- ggplot(cost_long,
+                     aes(x = phase, y = mean_acc_cost * 100, colour = group,
+                         group = group)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_pointrange(aes(ymin = (mean_acc_cost - se_acc_cost) * 100,
+                      ymax = (mean_acc_cost + se_acc_cost) * 100),
+                  position = position_dodge(0.2), size = 0.8) +
+  geom_line(position = position_dodge(0.2), linewidth = 1) +
+  facet_wrap(~ factor) +
+  labs(title = "Mismatch cost on accuracy",
+       subtitle = "Positive = mismatch trials less accurate than match trials",
+       x = "Phase", y = "Accuracy cost (match − mismatch, in pp)")
+
+p_cost_rt <- ggplot(cost_long,
+                    aes(x = phase, y = mean_rt_cost, colour = group,
+                        group = group)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_pointrange(aes(ymin = mean_rt_cost - se_rt_cost,
+                      ymax = mean_rt_cost + se_rt_cost),
+                  position = position_dodge(0.2), size = 0.8) +
+  geom_line(position = position_dodge(0.2), linewidth = 1) +
+  facet_wrap(~ factor) +
+  labs(title = "Mismatch cost on RT",
+       subtitle = "Positive = mismatch trials slower than match trials",
+       x = "Phase", y = "RT cost (mismatch − match, in ms)")
+
+combined_cost <- p_cost_acc / p_cost_rt
+ggsave(path(FACTOR_DIR, "mismatch_cost.png"), combined_cost,
+       width = 10, height = 8, dpi = 150)
+print(combined_cost)
+
+# --- Save tables to Excel ---
+write.xlsx(
+  list(
+    verb_stress_summary = desc_stress,
+    verb_match_summary  = desc_verbmatch,
+    noun_match_summary  = desc_nounmatch,
+    verb_mismatch_cost  = cost_verbmatch,
+    noun_mismatch_cost  = cost_nounmatch
+  ),
+  path(FACTOR_DIR, "factor_descriptives.xlsx"),
+  overwrite = TRUE
+)
+
+cat("\n\nAll outputs saved to:\n")
+cat(FACTOR_DIR, "\n")
+cat("- factor_descriptives.xlsx (5 tables)\n")
+cat("- factor_verb_stress.png\n")
+cat("- factor_verb_match.png\n")
+cat("- factor_noun_match.png\n")
+cat("- mismatch_cost.png  <-- the key plot for prediction effects\n")
+
+# ============================================================
+# FOLLOW-UP MODELS: Prediction-strategy 3-way interactions
+# Tests whether L1/L2 differ in pre/post sensitivity to:
+#   1. Verb-stress-based suffix prediction (verb_match)
+#   2. Noun-F0-based verb prediction (noun_match) — null comparison
+# Add this AFTER Section 9 in statistical_analysis.R
+# ============================================================
+
+# --- Build the follow-up dataset with factor coding ---
+# Set sum contrasts on the new factors
+
+long_followup <- long_testing |>
+  dplyr::mutate(
+    verb_match  = factor(verb_match,  levels = c("Match", "Mismatch")),
+    noun_match  = factor(noun_match,  levels = c("Match", "Mismatch")),
+    verb_stress = factor(verb_stress, levels = c("paroxytone", "oxytone"))
+  )
+
+contrasts(long_followup$verb_match)  <- contr.sum(2)
+contrasts(long_followup$noun_match)  <- contr.sum(2)
+contrasts(long_followup$verb_stress) <- contr.sum(2)
+
+long_followup_rt <- dplyr::filter(long_followup, !is.na(rt_correct), rt_correct > 0)
+
+# =============================================================
+# MODEL 4: Accuracy × verb_match (testing suffix prediction)
+# =============================================================
+message("\n=== Fitting Model 4: Accuracy × verb_match ===")
+mod_acc_vm <- glmer(
+  corr ~ group * phase * verb_match + verb_stress + noun_match +
+    (1 + phase | participant) + (1 | item),
+  data    = long_followup,
+  family  = binomial(link = "logit"),
+  control = ctrl_bin
+)
+
+# =============================================================
+# MODEL 5: RT × verb_match (testing suffix prediction)
+# =============================================================
+message("\n=== Fitting Model 5: RT × verb_match ===")
+mod_rt_vm <- lmer(
+  I(1/rt_correct) ~ group * phase * verb_match + verb_stress + noun_match +
+    (1 + phase | participant) + (1 | item),
+  data = long_followup_rt
+)
+
+# =============================================================
+# MODEL 6: Accuracy × noun_match (testing verb prediction — null)
+# =============================================================
+message("\n=== Fitting Model 6: Accuracy × noun_match ===")
+mod_acc_nm <- glmer(
+  corr ~ group * phase * noun_match + verb_stress + verb_match +
+    (1 + phase | participant) + (1 | item),
+  data    = long_followup,
+  family  = binomial(link = "logit"),
+  control = ctrl_bin
+)
+
+# =============================================================
+# MODEL 7: RT × noun_match (testing verb prediction — null)
+# =============================================================
+message("\n=== Fitting Model 7: RT × noun_match ===")
+mod_rt_nm <- lmer(
+  I(1/rt_correct) ~ group * phase * noun_match + verb_stress + verb_match +
+    (1 + phase | participant) + (1 | item),
+  data = long_followup_rt
+)
+
+# =============================================================
+# NMC for follow-up models (Casillas-style)
+# Test the key 3-way and its components
+# =============================================================
+
+# --- Accuracy × verb_match ---
+mod_acc_vm_no3way <- update(mod_acc_vm, . ~ . - group:phase:verb_match)
+mod_acc_vm_no_gpvm <- update(mod_acc_vm_no3way, . ~ . - group:verb_match)
+mod_acc_vm_no_phvm <- update(mod_acc_vm_no3way, . ~ . - phase:verb_match)
+
+anova_acc_vm_3way <- anova(mod_acc_vm_no3way, mod_acc_vm)
+anova_acc_vm_gpvm <- anova(mod_acc_vm_no_gpvm, mod_acc_vm_no3way)
+anova_acc_vm_phvm <- anova(mod_acc_vm_no_phvm, mod_acc_vm_no3way)
+
+# --- RT × verb_match (ML for LRT) ---
+mod_rt_vm_ml <- update(mod_rt_vm, REML = FALSE)
+mod_rt_vm_no3way <- update(mod_rt_vm_ml, . ~ . - group:phase:verb_match)
+mod_rt_vm_no_gpvm <- update(mod_rt_vm_no3way, . ~ . - group:verb_match)
+mod_rt_vm_no_phvm <- update(mod_rt_vm_no3way, . ~ . - phase:verb_match)
+
+anova_rt_vm_3way <- anova(mod_rt_vm_no3way, mod_rt_vm_ml)
+anova_rt_vm_gpvm <- anova(mod_rt_vm_no_gpvm, mod_rt_vm_no3way)
+anova_rt_vm_phvm <- anova(mod_rt_vm_no_phvm, mod_rt_vm_no3way)
+
+# --- Accuracy × noun_match ---
+mod_acc_nm_no3way <- update(mod_acc_nm, . ~ . - group:phase:noun_match)
+mod_acc_nm_no_gpnm <- update(mod_acc_nm_no3way, . ~ . - group:noun_match)
+mod_acc_nm_no_phnm <- update(mod_acc_nm_no3way, . ~ . - phase:noun_match)
+
+anova_acc_nm_3way <- anova(mod_acc_nm_no3way, mod_acc_nm)
+anova_acc_nm_gpnm <- anova(mod_acc_nm_no_gpnm, mod_acc_nm_no3way)
+anova_acc_nm_phnm <- anova(mod_acc_nm_no_phnm, mod_acc_nm_no3way)
+
+# --- RT × noun_match ---
+mod_rt_nm_ml <- update(mod_rt_nm, REML = FALSE)
+mod_rt_nm_no3way <- update(mod_rt_nm_ml, . ~ . - group:phase:noun_match)
+mod_rt_nm_no_gpnm <- update(mod_rt_nm_no3way, . ~ . - group:noun_match)
+mod_rt_nm_no_phnm <- update(mod_rt_nm_no3way, . ~ . - phase:noun_match)
+
+anova_rt_nm_3way <- anova(mod_rt_nm_no3way, mod_rt_nm_ml)
+anova_rt_nm_gpnm <- anova(mod_rt_nm_no_gpnm, mod_rt_nm_no3way)
+anova_rt_nm_phnm <- anova(mod_rt_nm_no_phnm, mod_rt_nm_no3way)
+
+# --- Compile NMC results ---
+make_nmc_row <- function(model_label, effect_label, cmp) {
+  data.frame(
+    model  = model_label,
+    effect = effect_label,
+    chisq  = round(cmp$Chisq[2], 2),
+    df     = cmp$Df[2],
+    p      = signif(cmp$`Pr(>Chisq)`[2], 3)
+  )
+}
+
+nmc_followup <- bind_rows(
+  make_nmc_row("acc_verbmatch",  "group:phase:verb_match", anova_acc_vm_3way),
+  make_nmc_row("acc_verbmatch",  "group:verb_match",       anova_acc_vm_gpvm),
+  make_nmc_row("acc_verbmatch",  "phase:verb_match",       anova_acc_vm_phvm),
+  make_nmc_row("rt_verbmatch",   "group:phase:verb_match", anova_rt_vm_3way),
+  make_nmc_row("rt_verbmatch",   "group:verb_match",       anova_rt_vm_gpvm),
+  make_nmc_row("rt_verbmatch",   "phase:verb_match",       anova_rt_vm_phvm),
+  make_nmc_row("acc_nounmatch",  "group:phase:noun_match", anova_acc_nm_3way),
+  make_nmc_row("acc_nounmatch",  "group:noun_match",       anova_acc_nm_gpnm),
+  make_nmc_row("acc_nounmatch",  "phase:noun_match",       anova_acc_nm_phnm),
+  make_nmc_row("rt_nounmatch",   "group:phase:noun_match", anova_rt_nm_3way),
+  make_nmc_row("rt_nounmatch",   "group:noun_match",       anova_rt_nm_gpnm),
+  make_nmc_row("rt_nounmatch",   "phase:noun_match",       anova_rt_nm_phnm)
+)
+
+# --- Fixed-effect tables for all 4 follow-up models ---
+get_fixed <- function(mod, label) {
+  tidy(mod, effects = "fixed", conf.int = TRUE) |>
+    dplyr::mutate(model = label,
+                  estimate  = round(estimate, 3),
+                  std.error = round(std.error, 3),
+                  conf.low  = round(conf.low, 3),
+                  conf.high = round(conf.high, 3),
+                  p.value   = signif(p.value, 3)) |>
+    dplyr::select(model, term, estimate, std.error, conf.low, conf.high, p.value)
+}
+
+fixed_followup <- bind_rows(
+  get_fixed(mod_acc_vm, "acc_verbmatch"),
+  get_fixed(mod_rt_vm,  "rt_verbmatch"),
+  get_fixed(mod_acc_nm, "acc_nounmatch"),
+  get_fixed(mod_rt_nm,  "rt_nounmatch")
+)
+
+# --- Predicted values: group × phase × match for each model ---
+pred_acc_vm <- ggpredict(mod_acc_vm, terms = c("phase", "group", "verb_match"))
+pred_rt_vm  <- ggpredict(mod_rt_vm,  terms = c("phase", "group", "verb_match"))
+pred_acc_nm <- ggpredict(mod_acc_nm, terms = c("phase", "group", "noun_match"))
+pred_rt_nm  <- ggpredict(mod_rt_nm,  terms = c("phase", "group", "noun_match"))
+
+# =============================================================
+# PLOTS
+# =============================================================
+
+# --- Predicted means by group × phase × match (4 panels) ---
+make_pred_acc_plot <- function(pred_data, title_text) {
+  ggplot(as.data.frame(pred_data),
+         aes(x = x, y = predicted, colour = facet, group = facet)) +
+    geom_pointrange(aes(ymin = conf.low, ymax = conf.high),
+                    position = position_dodge(0.2), size = 0.7) +
+    geom_line(position = position_dodge(0.2), linewidth = 0.8) +
+    facet_wrap(~ group) +
+    coord_cartesian(ylim = c(0.85, 1.00)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    labs(title = title_text,
+         x = "Phase", y = "Predicted P(correct)", colour = NULL)
+}
+
+make_pred_rt_plot <- function(pred_data, title_text) {
+  ggplot(as.data.frame(pred_data),
+         aes(x = x, y = (1/predicted) * 1000,
+             colour = facet, group = facet)) +
+    geom_pointrange(aes(ymin = (1/conf.high) * 1000,
+                        ymax = (1/conf.low) * 1000),
+                    position = position_dodge(0.2), size = 0.7) +
+    geom_line(position = position_dodge(0.2), linewidth = 0.8) +
+    facet_wrap(~ group) +
+    labs(title = title_text,
+         x = "Phase", y = "Predicted RT (ms)", colour = NULL)
+}
+
+p_pred_acc_vm <- make_pred_acc_plot(pred_acc_vm,
+                                    "Predicted accuracy by verb match (suffix prediction)")
+p_pred_rt_vm  <- make_pred_rt_plot(pred_rt_vm,
+                                   "Predicted RT by verb match (suffix prediction)")
+p_pred_acc_nm <- make_pred_acc_plot(pred_acc_nm,
+                                    "Predicted accuracy by noun match (verb prediction)")
+p_pred_rt_nm  <- make_pred_rt_plot(pred_rt_nm,
+                                   "Predicted RT by noun match (verb prediction)")
+
+ggsave(path(GLMM_DIR, "followup_acc_verbmatch.png"), p_pred_acc_vm,
+       width = 9, height = 5, dpi = 150)
+ggsave(path(GLMM_DIR, "followup_rt_verbmatch.png"), p_pred_rt_vm,
+       width = 9, height = 5, dpi = 150)
+ggsave(path(GLMM_DIR, "followup_acc_nounmatch.png"), p_pred_acc_nm,
+       width = 9, height = 5, dpi = 150)
+ggsave(path(GLMM_DIR, "followup_rt_nounmatch.png"), p_pred_rt_nm,
+       width = 9, height = 5, dpi = 150)
+
+# --- Model-derived mismatch-cost plot (the key visualization) ---
+# Compute the cost (mismatch - match) from predicted values
+build_cost_data <- function(pred_data, factor_label) {
+  df <- as.data.frame(pred_data) |>
+    dplyr::rename(phase = x, group = group, match = facet,
+                  pred = predicted, lo = conf.low, hi = conf.high) |>
+    dplyr::mutate(factor = factor_label)
+  df
+}
+
+cost_data <- bind_rows(
+  build_cost_data(pred_rt_vm, "Verb match\n(suffix prediction)"),
+  build_cost_data(pred_rt_nm, "Noun match\n(verb prediction)")
+) |>
+  dplyr::mutate(rt_ms = (1/pred) * 1000) |>
+  dplyr::select(factor, group, phase, match, rt_ms) |>
+  tidyr::pivot_wider(names_from = match, values_from = rt_ms) |>
+  dplyr::mutate(cost_ms = Mismatch - Match)
+
+p_model_cost <- ggplot(cost_data,
+                       aes(x = phase, y = cost_ms, colour = group, group = group)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 3, position = position_dodge(0.2)) +
+  geom_line(position = position_dodge(0.2), linewidth = 1) +
+  facet_wrap(~ factor) +
+  labs(title = "Model-derived mismatch cost (RT)",
+       subtitle = "Positive = mismatch slower than match (= prediction surprise)",
+       x = "Phase", y = "RT cost: Mismatch − Match (ms)")
+ggsave(path(GLMM_DIR, "followup_model_cost.png"), p_model_cost,
+       width = 9, height = 5, dpi = 150)
+
+# =============================================================
+# SAVE TO EXCEL + RDS
+# =============================================================
+write.xlsx(
+  list(
+    nmc_followup    = nmc_followup,
+    fixed_followup  = fixed_followup
+  ),
+  path(GLMM_DIR, "glmm_followup_results.xlsx"),
+  overwrite = TRUE
+)
+
+saveRDS(list(
+  mod_acc_vm = mod_acc_vm, mod_rt_vm = mod_rt_vm,
+  mod_acc_nm = mod_acc_nm, mod_rt_nm = mod_rt_nm,
+  nmc_followup = nmc_followup, fixed_followup = fixed_followup,
+  pred_acc_vm = pred_acc_vm, pred_rt_vm = pred_rt_vm,
+  pred_acc_nm = pred_acc_nm, pred_rt_nm = pred_rt_nm,
+  cost_data = cost_data
+), path(GLMM_DIR, "glmm_followup_results.rds"))
+
+message("\nFollow-up GLMM outputs saved to: ", GLMM_DIR)
+message("- glmm_followup_results.xlsx")
+message("- glmm_followup_results.rds")
+message("- followup_acc_verbmatch.png, followup_rt_verbmatch.png")
+message("- followup_acc_nounmatch.png, followup_rt_nounmatch.png")
+message("- followup_model_cost.png")
+
+# =============================================================
+# SECTION 10: PRINT EVERYTHING FOR REVIEW (with follow-ups)
+# =============================================================
+
+cat("\n\n")
+cat("################################################################\n")
+cat("# PRIMARY MODELS\n")
+cat("################################################################\n\n")
+
+cat("================================================================\n")
+cat("MODEL 1: ACCURACY (testing, binomial-logit)\n")
+cat("================================================================\n")
+print(summary(mod_acc))
+
+cat("\n\n================================================================\n")
+cat("MODEL 2: RT (testing, 1/RT Gaussian)\n")
+cat("================================================================\n")
+print(summary(mod_rt))
+
+cat("\n\n================================================================\n")
+cat("MODEL 3: TRAINING (growth curve, binomial-logit)\n")
+cat("================================================================\n")
+print(summary(mod_training))
+
+cat("\n\n")
+cat("################################################################\n")
+cat("# FOLLOW-UP MODELS (prediction strategies)\n")
+cat("################################################################\n\n")
+
+cat("================================================================\n")
+cat("MODEL 4: ACCURACY × verb_match (suffix prediction)\n")
+cat("================================================================\n")
+print(summary(mod_acc_vm))
+
+cat("\n\n================================================================\n")
+cat("MODEL 5: RT × verb_match (suffix prediction)\n")
+cat("================================================================\n")
+print(summary(mod_rt_vm))
+
+cat("\n\n================================================================\n")
+cat("MODEL 6: ACCURACY × noun_match (verb prediction — null check)\n")
+cat("================================================================\n")
+print(summary(mod_acc_nm))
+
+cat("\n\n================================================================\n")
+cat("MODEL 7: RT × noun_match (verb prediction — null check)\n")
+cat("================================================================\n")
+print(summary(mod_rt_nm))
+
+cat("\n\n")
+cat("################################################################\n")
+cat("# TABLES\n")
+cat("################################################################\n\n")
+
+cat("--- Primary: goodness of fit (R^2) ---\n")
+print(r2_summary)
+
+cat("\n--- Primary: nested model comparisons ---\n")
+print(nmc_all)
+
+cat("\n--- Primary: fixed-effect estimates ---\n")
+print(fixed_all)
+
+cat("\n--- Primary: diagnostics summary ---\n")
+print(diagnostics_summary)
+
+cat("\n--- Primary: predicted accuracy ---\n")
+print(dplyr::select(interp_acc, group, phase, predicted_pct, CI_pct))
+
+cat("\n--- Primary: predicted RT ---\n")
+print(dplyr::select(interp_rt, group, phase, predicted_ms, CI_ms))
+
+cat("\n\n--- Follow-up: nested model comparisons ---\n")
+print(nmc_followup)
+
+cat("\n--- Follow-up: fixed-effect estimates ---\n")
+print(fixed_followup)
+
+cat("\n--- Follow-up: model-derived RT mismatch cost (ms) ---\n")
+print(cost_data)
+
+cat("\n\n")
+cat("################################################################\n")
+cat("# PRIMARY PLOTS\n")
+cat("################################################################\n\n")
+
+print(p_pred_acc)
+print(p_pred_rt)
+print(p_train_traj)
+print(p_forest)
+
+cat("\n\n")
+cat("################################################################\n")
+cat("# FOLLOW-UP PLOTS\n")
+cat("################################################################\n\n")
+
+print(p_pred_acc_vm)
+print(p_pred_rt_vm)
+print(p_pred_acc_nm)
+print(p_pred_rt_nm)
+print(p_model_cost)
+
+cat("\n\nDisplaying DHARMa diagnostic plots for primary models...\n\n")
+plot(simulateResiduals(mod_acc, n = 1000));      title(main = "Accuracy diagnostics")
+plot(simulateResiduals(mod_rt, n = 1000));       title(main = "RT (1/RT) diagnostics")
+plot(simulateResiduals(mod_training, n = 1000)); title(main = "Training diagnostics")
+
+cat("\nDone. Review the output above and the plots in the RStudio plots pane.\n")

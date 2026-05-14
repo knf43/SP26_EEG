@@ -1,0 +1,101 @@
+# =============================================================
+# SECTION 4: NESTED MODEL COMPARISONS (Casillas style)
+# =============================================================
+# Fit each restricted model explicitly as a named object.
+# Test interactions first (leave them out first if non-significant),
+# then test main effects against a no-interaction model.
+
+# ----- Accuracy model NMC -------------------------------------
+# Full (inclusive) model already fit: mod_acc
+# Build restricted models by stepping down
+
+mod_acc_no_int   <- update(mod_acc, . ~ . - group:phase)        # drop interaction
+mod_acc_no_cond  <- update(mod_acc, . ~ . - cond_name)          # drop condition
+mod_acc_no_group <- update(mod_acc_no_int, . ~ . - group)       # drop group (no int)
+mod_acc_no_phase <- update(mod_acc_no_int, . ~ . - phase)       # drop phase (no int)
+
+# Compare: restricted vs full
+anova_acc_int   <- anova(mod_acc_no_int,   mod_acc)              # group:phase
+anova_acc_cond  <- anova(mod_acc_no_cond,  mod_acc)              # cond_name
+anova_acc_group <- anova(mod_acc_no_group, mod_acc_no_int)       # group (vs no-int)
+anova_acc_phase <- anova(mod_acc_no_phase, mod_acc_no_int)       # phase (vs no-int)
+
+nmc_acc <- bind_rows(
+  data.frame(model = "accuracy", effect = "group:phase",
+             chisq = round(anova_acc_int$Chisq[2],   2),
+             df    = anova_acc_int$`Chi Df`[2],
+             p     = signif(anova_acc_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "accuracy", effect = "cond_name",
+             chisq = round(anova_acc_cond$Chisq[2],  2),
+             df    = anova_acc_cond$`Chi Df`[2],
+             p     = signif(anova_acc_cond$`Pr(>Chisq)`[2],  3)),
+  data.frame(model = "accuracy", effect = "group",
+             chisq = round(anova_acc_group$Chisq[2], 2),
+             df    = anova_acc_group$`Chi Df`[2],
+             p     = signif(anova_acc_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "accuracy", effect = "phase",
+             chisq = round(anova_acc_phase$Chisq[2], 2),
+             df    = anova_acc_phase$`Chi Df`[2],
+             p     = signif(anova_acc_phase$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- RT model NMC -------------------------------------------
+# Note: for lmer models, need to refit with REML = FALSE for LRT
+
+mod_rt_ml         <- update(mod_rt, REML = FALSE)
+mod_rt_no_int     <- update(mod_rt_ml, . ~ . - group:phase)
+mod_rt_no_cond    <- update(mod_rt_ml, . ~ . - cond_name)
+mod_rt_no_group   <- update(mod_rt_no_int, . ~ . - group)
+mod_rt_no_phase   <- update(mod_rt_no_int, . ~ . - phase)
+
+anova_rt_int   <- anova(mod_rt_no_int,   mod_rt_ml)
+anova_rt_cond  <- anova(mod_rt_no_cond,  mod_rt_ml)
+anova_rt_group <- anova(mod_rt_no_group, mod_rt_no_int)
+anova_rt_phase <- anova(mod_rt_no_phase, mod_rt_no_int)
+
+nmc_rt <- bind_rows(
+  data.frame(model = "rt", effect = "group:phase",
+             chisq = round(anova_rt_int$Chisq[2],   2),
+             df    = anova_rt_int$`Chi Df`[2],
+             p     = signif(anova_rt_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "rt", effect = "cond_name",
+             chisq = round(anova_rt_cond$Chisq[2],  2),
+             df    = anova_rt_cond$`Chi Df`[2],
+             p     = signif(anova_rt_cond$`Pr(>Chisq)`[2],  3)),
+  data.frame(model = "rt", effect = "group",
+             chisq = round(anova_rt_group$Chisq[2], 2),
+             df    = anova_rt_group$`Chi Df`[2],
+             p     = signif(anova_rt_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "rt", effect = "phase",
+             chisq = round(anova_rt_phase$Chisq[2], 2),
+             df    = anova_rt_phase$`Chi Df`[2],
+             p     = signif(anova_rt_phase$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- Training model NMC -------------------------------------
+mod_train_no_int     <- update(mod_training,         . ~ . - group:trial_z)
+mod_train_no_group   <- update(mod_train_no_int,     . ~ . - group)
+mod_train_no_trial   <- update(mod_train_no_int,     . ~ . - trial_z)
+
+anova_train_int   <- anova(mod_train_no_int,   mod_training)
+anova_train_group <- anova(mod_train_no_group, mod_train_no_int)
+anova_train_trial <- anova(mod_train_no_trial, mod_train_no_int)
+
+nmc_train <- bind_rows(
+  data.frame(model = "training", effect = "group:trial_z",
+             chisq = round(anova_train_int$Chisq[2],   2),
+             df    = anova_train_int$`Chi Df`[2],
+             p     = signif(anova_train_int$`Pr(>Chisq)`[2],   3)),
+  data.frame(model = "training", effect = "group",
+             chisq = round(anova_train_group$Chisq[2], 2),
+             df    = anova_train_group$`Chi Df`[2],
+             p     = signif(anova_train_group$`Pr(>Chisq)`[2], 3)),
+  data.frame(model = "training", effect = "trial_z",
+             chisq = round(anova_train_trial$Chisq[2], 2),
+             df    = anova_train_trial$`Chi Df`[2],
+             p     = signif(anova_train_trial$`Pr(>Chisq)`[2], 3))
+)
+
+# ----- Combine all NMC results --------------------------------
+nmc_all <- bind_rows(nmc_acc, nmc_rt, nmc_train)
+print(nmc_all)

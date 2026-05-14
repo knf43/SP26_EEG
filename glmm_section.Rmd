@@ -1,0 +1,170 @@
+# Statistical Analysis
+
+```{r glmm-setup, include=FALSE}
+glmm <- readRDS("~/Desktop/SP26_data/behavioral_output/glmm/glmm_results.rds")
+GLMM_FIGS <- "~/Desktop/SP26_data/behavioral_output/glmm"
+
+fmt_p_apa <- function(x) ifelse(x < .001, "< .001",
+                                sub("^0", "", sprintf("= %.3f", x)))
+fmt_chi <- function(x) sprintf("%.2f", x)
+
+# Pull out specific NMC rows for inline citation
+get_nmc <- function(model_name, effect_name) {
+  glmm$nmc_all |>
+    filter(model == model_name, effect == effect_name) |>
+    slice(1)
+}
+```
+
+## Methods
+
+The accuracy and reaction time data from the pre- and post-test phases were analyzed using generalized linear mixed-effects models (GLMMs) fit with the `lme4` package [@bates2015]. Accuracy (binary) was modeled with a binomial family and logit link; reaction time on correct trials was modeled with a Gamma family and log link [@lo2015]. Both models included `group` (L1, L2), `phase` (pre, post), their two-way interaction, and a main effect of `condition` (six levels) as population-level (fixed) effects. The random-effects structure included by-participant random intercepts and slopes for `phase`, and by-item random intercepts.
+
+Training-phase accuracy was modeled with a growth-curve GLMM: `group` × standardized trial number as fixed effects, with by-participant random intercepts and slopes for trial.
+
+All categorical predictors were sum-coded so that each coefficient represents a deviation from the grand mean. Trial number in the training model was standardized (mean-centered, divided by 1 SD). Models were fit using the `bobyqa` optimizer.
+
+Model assumptions were assessed via scaled residual diagnostics with the `DHARMa` package. The significance of each fixed effect was evaluated via nested model comparisons (NMC): each effect was dropped from the full model and the reduced model was compared to the full model with a likelihood ratio test. Marginal and conditional R² were calculated following Nakagawa & Schielzeth [-@nakagawa2013] using the `MuMIn` package. Decision rule: α = .05.
+
+## Results
+
+```{r glmm-fit-table}
+library(knitr)
+kable(glmm$r2_summary,
+      caption = "Goodness of fit for each model.",
+      col.names = c("Model", "Marginal R²", "Conditional R²"))
+```
+
+### Accuracy (testing phase)
+
+```{r acc-results, results='asis'}
+nmc_group <- get_nmc("accuracy", "group")
+nmc_phase <- get_nmc("accuracy", "phase")
+nmc_int   <- get_nmc("accuracy", "group:phase")
+nmc_cond  <- get_nmc("accuracy", "cond_name")
+
+cat(sprintf(
+"Accuracy differed reliably as a function of group [χ²(%d) = %s, *p* %s] and phase [χ²(%d) = %s, *p* %s]. The group × phase interaction was %s [χ²(%d) = %s, *p* %s]. The main effect of condition was %s [χ²(%d) = %s, *p* %s].\n\n",
+nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p),
+nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p),
+ifelse(nmc_int$p < .05, "significant", "not significant"),
+nmc_int$df,   fmt_chi(nmc_int$chisq),   fmt_p_apa(nmc_int$p),
+ifelse(nmc_cond$p < .05, "significant", "not significant"),
+nmc_cond$df,  fmt_chi(nmc_cond$chisq),  fmt_p_apa(nmc_cond$p)
+))
+```
+
+```{r acc-fixed-table}
+glmm$fixed_all |>
+  filter(model == "accuracy") |>
+  select(-model) |>
+  kable(caption = "Accuracy model: fixed-effect estimates (log-odds scale).",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r acc-predicted}
+glmm$interp_acc |>
+  select(group, phase, predicted_pct, CI_pct) |>
+  kable(caption = "Accuracy model: predicted probabilities by group and phase.",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+### Reaction time (testing phase, correct trials)
+
+```{r rt-results, results='asis'}
+nmc_group <- get_nmc("rt", "group")
+nmc_phase <- get_nmc("rt", "phase")
+nmc_int   <- get_nmc("rt", "group:phase")
+nmc_cond  <- get_nmc("rt", "cond_name")
+
+cat(sprintf(
+"Reaction time on correct trials differed reliably as a function of group [χ²(%d) = %s, *p* %s] and phase [χ²(%d) = %s, *p* %s]. The group × phase interaction was %s [χ²(%d) = %s, *p* %s]. The main effect of condition was %s [χ²(%d) = %s, *p* %s].\n\n",
+nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p),
+nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p),
+ifelse(nmc_int$p < .05, "significant", "not significant"),
+nmc_int$df,   fmt_chi(nmc_int$chisq),   fmt_p_apa(nmc_int$p),
+ifelse(nmc_cond$p < .05, "significant", "not significant"),
+nmc_cond$df,  fmt_chi(nmc_cond$chisq),  fmt_p_apa(nmc_cond$p)
+))
+```
+
+```{r rt-fixed-table}
+glmm$fixed_all |>
+  filter(model == "rt") |>
+  select(-model) |>
+  kable(caption = "RT model: fixed-effect estimates (log-RT scale).",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r rt-predicted}
+glmm$interp_rt |>
+  select(group, phase, predicted_ms, CI_ms) |>
+  kable(caption = "RT model: predicted RT by group and phase.",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+### Training (growth curve)
+
+```{r train-results, results='asis'}
+nmc_group <- get_nmc("training", "group")
+nmc_trial <- get_nmc("training", "trial_z")
+nmc_int   <- get_nmc("training", "group:trial_z")
+
+cat(sprintf(
+"Training accuracy increased reliably with trial [χ²(%d) = %s, *p* %s] and differed by group [χ²(%d) = %s, *p* %s]. The group × trial interaction was %s [χ²(%d) = %s, *p* %s], indicating that L1 and L2 speakers %s during training.\n\n",
+nmc_trial$df, fmt_chi(nmc_trial$chisq), fmt_p_apa(nmc_trial$p),
+nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p),
+ifelse(nmc_int$p < .05, "significant", "not significant"),
+nmc_int$df,   fmt_chi(nmc_int$chisq),   fmt_p_apa(nmc_int$p),
+ifelse(nmc_int$p < .05, "learned at different rates", "learned at comparable rates")
+))
+```
+
+```{r train-fixed-table}
+glmm$fixed_all |>
+  filter(model == "training") |>
+  select(-model) |>
+  kable(caption = "Training model: fixed-effect estimates (log-odds scale).",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+### Plots
+
+```{r fig-pred-acc, fig.cap="Model-predicted accuracy by group and phase. Error bars represent 95% CI from the GLMM."}
+knitr::include_graphics(file.path(GLMM_FIGS, "pred_accuracy.png"))
+```
+
+```{r fig-pred-rt, fig.cap="Model-predicted RT by group and phase. Error bars represent 95% CI from the Gamma-log GLMM."}
+knitr::include_graphics(file.path(GLMM_FIGS, "pred_rt.png"))
+```
+
+```{r fig-train-traj, fig.cap="Per-participant predicted training trajectories from the growth-curve GLMM, faceted by group. Each line is one participant's fitted curve."}
+knitr::include_graphics(file.path(GLMM_FIGS, "training_trajectories.png"))
+```
+
+```{r fig-forest, fig.cap="Forest plot of fixed-effect estimates with 95% confidence intervals. Effects on the log-odds scale for accuracy and training; log-RT scale for the RT model."}
+knitr::include_graphics(file.path(GLMM_FIGS, "forest_plot.png"))
+```
+
+### Diagnostics
+
+```{r diag-table}
+glmm$diagnostics_summary |>
+  kable(caption = "DHARMa diagnostic summary for each GLMM. KS p-values > .05 indicate adequate residual uniformity; dispersion near 1.0 indicates no over- or under-dispersion.",
+        col.names = c("Model", "KS p-value", "Dispersion", "Dispersion p"))
+```
+
+```{r diag-acc, fig.cap="DHARMa scaled residuals for the accuracy model. Left: QQ-plot vs. expected uniform. Right: residuals vs. fitted values."}
+knitr::include_graphics(file.path(GLMM_FIGS, "dharma_accuracy.png"))
+```
+
+```{r diag-rt, fig.cap="DHARMa scaled residuals for the RT model."}
+knitr::include_graphics(file.path(GLMM_FIGS, "dharma_rt.png"))
+```
+
+```{r diag-train, fig.cap="DHARMa scaled residuals for the training growth-curve model."}
+knitr::include_graphics(file.path(GLMM_FIGS, "dharma_training.png"))
+```
