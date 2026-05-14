@@ -3,7 +3,7 @@
     "path": "~/Desktop/SP26_EEG/index.Rmd",
     "project_path": "index.Rmd",
     "type": "r_markdown",
-    "hash": "2827886703",
+    "hash": "3757857698",
     "contents": "",
     "dirty": false,
     "created": 1778525164296.0,
@@ -13,15 +13,15 @@
         "tempName": "Untitled1",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "115,83",
-        "scrollLine": "106"
+        "cursorPosition": "483,0",
+        "scrollLine": "123"
     },
     "folds": "",
-    "lastKnownWriteTime": 1778771858,
+    "lastKnownWriteTime": 1778780978,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1778771858686,
+    "last_content_update": 1778780978317,
     "read_only": false,
     "read_only_alternatives": []
 }

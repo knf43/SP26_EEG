@@ -2,7 +2,15 @@
 title: "SP26 Data Analysis"
 author: "Kaylee Fernandez"
 date: "2026-05-11"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: false
+    theme: cosmo
 ---
 
 ```{r setup, include=FALSE}
@@ -61,14 +69,6 @@ get_nmc <- function(model_name, effect_name, src) {
   src |> filter(model == model_name, effect == effect_name) |> slice(1)
 }
 
-# Informative labels for sum-coded condition coefficients
-# Order matches COND_NAME_ORDER in script.R:
-# 1: parox_nounmatch_verbmatch     (a)
-# 2: parox_nounmismatch_verbmatch  (d)
-# 3: parox_nounmatch_verbmismatch  (c)
-# 4: oxy_nounmatch_verbmatch       (f)
-# 5: oxy_nounmismatch_verbmatch    (b)
-# 6: oxy_nounmatch_verbmismatch    (e) -- reference (not in table)
 COND_NAME_LABELS <- c(
   "cond_name1" = "parox / N+ / V+",
   "cond_name2" = "parox / N− / V+",
@@ -109,17 +109,19 @@ kable(cond_legend_training,
       align = c("c", "l", "l", "l"))
 ```
 
-## Analysis
+# Summary of Findings
 
-Reaction time was analyzed on correct trials, incorrect trials, and all trials, with bounds 200–5000 ms. Group means were computed by averaging within participant first, then across participants.
+## General Description
 
-Inferential analyses were run with generalized linear mixed-effects models (`lme4`). Accuracy was modeled with a binomial-logit family; reaction time was modeled with a Gaussian family on 1/RT (reciprocal transformation; Box-Cox optimum λ ≈ −0.7, 95% CI [−0.8, −0.6]). All categorical predictors used sum contrasts. Random effects: by-participant intercepts and slopes for phase, by-item intercepts. Effects were tested via nested model comparisons. Predicted values are back-transformed (probabilities for accuracy, ms for RT).
+Accuracy and RT data from the pre- and post-test phases were analyzed using generalized linear mixed-effects models in R with the `lme4` package. Accuracy (binary correct/incorrect) was modeled with a binomial family and logit link. RT on correct trials (200–5000 ms) was modeled with a Gaussian family on the 1/RT (reciprocal/speed) transformation, selected via Box-Cox analysis (optimal λ ≈ −0.7; 95% CI [−0.8, −0.6]). Training-phase accuracy was modeled with a binomial-logit growth-curve GLMM with standardized trial number as a continuous predictor. All models included group (L1, L2), phase (pre, post), their interaction, and condition (6 levels) as fixed effects; the training model included group, trial_z, and their interaction. All categorical predictors used sum-to-zero contrasts so that coefficients represent deviations from the grand mean. Random-effects structure: by-participant intercepts and slopes for phase (or trial in the training model) and by-item intercepts. Model assumptions were assessed with the `DHARMa` package using scaled quantile residuals; QQ-plots and dispersion tests were used to evaluate fit. Statistical significance of main effects and interactions was assessed via nested model comparisons; main effects involved in interactions were tested against a no-interaction model to preserve marginality. Marginal and conditional R² were calculated following Nakagawa and Schielzeth (2013). Decision rule: α = .05.
 
-In sum-coded factor tables, condition labels use the format `stress / N± / V±` where `N+/V+` = match and `N−/V−` = mismatch. The reference cell (not shown in tables) is `oxy / N+ / V−`; its β equals the negative sum of the other five coefficients.
+## Results
 
-# Results
+The accuracy model was fit with a maximal error term (marginal R² = 0.04; conditional R² = 0.38). The analysis revealed a significant group × phase interaction [χ²(1) = 4.62; *p* = .032] and a significant main effect of condition [χ²(5) = 15.39; *p* = .009]. The main effects of group [χ²(1) = 2.94; *p* = .087] and phase [χ²(1) = 0.01; *p* = .944] were not significant. The RT model was fit with a maximal error term (marginal R² = 0.10; conditional R² = 0.32). The analysis revealed significant main effects of group [χ²(1) = 6.27; *p* = .012], phase [χ²(1) = 22.06; *p* < .001], and condition [χ²(5) = 119.38; *p* < .001]; the group × phase interaction was not significant [χ²(1) = 2.92; *p* = .087]. The training-phase model (marginal R² = 0.05; conditional R² = 0.19) showed a significant main effect of group [χ²(1) = 6.73; *p* = .009]; the effects of trial [χ²(1) = 2.86; *p* = .091] and group × trial [χ²(1) = 0.55; *p* = .458] were not significant. Follow-up RT analyses examined two prediction cues. The verb-match analysis (verb stress → suffix prediction) revealed significant interactions of group × verb match [χ²(1) = 9.43; *p* = .002] and phase × verb match [χ²(1) = 4.94; *p* = .026]; the group × phase × verb match interaction was not significant [χ²(1) = 0.33; *p* = .565]. The noun-match analysis (noun F0 → verb prediction) yielded no significant effects in accuracy or RT (all *p* > .12).
 
-## Descriptive Overview by Phase and Group
+# Descriptive Results
+
+## Overview by Phase and Group
 
 ```{r overall-table}
 overall <- by_grp |>
@@ -386,7 +388,7 @@ cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
 cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
             nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
 
-cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction n.s.).\n\n")
+cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction not significant).\n\n")
 ```
 
 ## Noun match (verb prediction)
@@ -471,7 +473,7 @@ pp_tbl <- by_pp |>
 
 kable(pp_tbl,
       caption = "Per-participant accuracy and RT by phase.",
-      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r"))
+      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r")) 
 ```
 
 # Session Info
@@ -479,4 +481,3 @@ kable(pp_tbl,
 ```{r session, echo=FALSE}
 sessionInfo()
 ```
-

@@ -117,7 +117,7 @@ Accuracy and RT data from the pre- and post-test phases were analyzed using gene
 
 ## Results
 
-The accuracy model was fit with a maximal error term (marginal R² = 0.04; conditional R² = 0.38). The analysis revealed a significant group × phase interaction [χ²(1) = 4.62; *p* = .032] and a significant main effect of condition [χ²(5) = 15.39; *p* = .009]. The main effects of group [χ²(1) = 2.94; *p* = .087] and phase [χ²(1) = 0.01; *p* = .944] were not significant. The RT model was fit with a maximal error term (marginal R² = 0.10; conditional R² = 0.32). The analysis revealed significant main effects of group [χ²(1) = 6.27; *p* = .012], phase [χ²(1) = 22.06; *p* < .001], and condition [χ²(5) = 119.38; *p* < .001]; the group × phase interaction was not significant [χ²(1) = 2.92; *p* = .087]. The training-phase model (marginal R² = 0.05; conditional R² = 0.19) showed a significant main effect of group [χ²(1) = 6.73; *p* = .009]; the effects of trial [χ²(1) = 2.86; *p* = .091] and group × trial [χ²(1) = 0.55; *p* = .458] were not significant. Follow-up RT analyses examined two prediction cues. The verb-match analysis (verb stress → suffix prediction) revealed significant interactions of group × verb match [χ²(1) = 9.43; *p* = .002] and phase × verb match [χ²(1) = 4.94; *p* = .026]; the group × phase × verb match interaction was not significant [χ²(1) = 0.33; *p* = .565]. The noun-match analysis (noun F0 → verb prediction) yielded no significant effects in accuracy or RT (all *p* > .12).
+The accuracy model was fit with a maximal error term (marginal R² = 0.04; conditional R² = 0.38). The analysis revealed a significant group × phase interaction [χ²(1) = 4.62; *p* = .032] and a significant main effect of condition [χ²(5) = 15.39; *p* = .009]. The main effects of group [χ²(1) = 2.94; *p* = .087] and phase [χ²(1) = 0.01; *p* = .944] were not significant. The RT model was fit with a maximal error term (marginal R² = 0.10; conditional R² = 0.32). The analysis revealed significant main effects of group [χ²(1) = 6.27; *p* = .012], phase [χ²(1) = 22.06; *p* < .001], and condition [χ²(5) = 119.38; *p* < .001]; the group × phase interaction was a non-significant trend [χ²(1) = 2.92; *p* = .087]. The training-phase model (marginal R² = 0.05; conditional R² = 0.19) showed a significant main effect of group [χ²(1) = 6.73; *p* = .009]; the effects of trial [χ²(1) = 2.86; *p* = .091] and group × trial [χ²(1) = 0.55; *p* = .458] were not significant. Follow-up RT analyses examined two prediction cues. The verb-match analysis (verb stress → suffix prediction) revealed significant interactions of group × verb match [χ²(1) = 9.43; *p* = .002] and phase × verb match [χ²(1) = 4.94; *p* = .026]; the group × phase × verb match interaction was not significant [χ²(1) = 0.33; *p* = .565]. The noun-match analysis (noun F0 → verb prediction) yielded no significant effects in accuracy or RT (all *p* > .12).
 
 # Descriptive Results
 
@@ -388,7 +388,7 @@ cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
 cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
             nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
 
-cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction not significant).\n\n")
+cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups (3-way interaction n.s.).\n\n")
 ```
 
 ## Noun match (verb prediction)
@@ -473,7 +473,7 @@ pp_tbl <- by_pp |>
 
 kable(pp_tbl,
       caption = "Per-participant accuracy and RT by phase.",
-      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r")) 
+      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r"))
 ```
 
 # Session Info
