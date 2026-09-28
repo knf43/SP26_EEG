@@ -1,0 +1,154 @@
+---
+title: "SP26 Behavioural Analysis"
+subtitle: "Snapshot of the current data"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = "center")
+
+library(knitr)
+library(dplyr)
+library(stringr)
+
+source("script.R")
+long   <- res$long
+by_grp <- res$by_grp
+
+GLMM_DIR <- "~/Desktop/SP26_data/behavioral_output/glmm"
+FIG_DIR  <- "figures"
+
+glmm     <- readRDS(file.path(GLMM_DIR, "glmm_results.rds"))
+followup <- readRDS(file.path(GLMM_DIR, "glmm_followup_results.rds"))
+
+fmt_p <- function(x) ifelse(x < .001, "< .001",
+                            sub("^0", "", sprintf("= %.3f", x)))
+
+nmc <- function(model, effect, src) {
+  r <- src |> filter(model == !!model, effect == !!effect) |> slice(1)
+  sprintf("$\\chi^2$(%d) = %.2f, *p* %s", r$df, r$chisq, fmt_p(r$p))
+}
+
+fig <- function(name) {
+  p <- file.path(FIG_DIR, name)
+  if (file.exists(p)) include_graphics(p) else invisible(NULL)
+}
+
+n_l1 <- long |> filter(group == "L1") |> pull(participant) |> n_distinct()
+n_l2 <- long |> filter(group == "L2") |> pull(participant) |> n_distinct()
+```
+
+# Models
+
+**Dependent variables.** Accuracy, coded 1 for a correct *PRESENTE* or *PASADO* judgement and 0 otherwise, and reaction time on correct trials, in seconds, trimmed to 200 to 5000 ms.
+
+**Independent variables.** `group` (L1, L2), between participants. `phase` (pre, post), within participants. `condition` (six levels), within participants, crossing `verb_stress` (paroxytone, oxytone), `verb_match` (Match, Mismatch) and `noun_match` (Match, Mismatch). In the training models, standardized trial number (`trial_z`) replaces `phase` and `condition`.
+
+Accuracy and reaction time from the pre- and post-test phases were analyzed using generalized linear mixed-effects models fit with the `lme4` package. Accuracy was modeled with a binomial family and logit link; reaction time was modeled with a Gaussian family on log-transformed RT, selected over Gamma and inverse Gaussian alternatives on the basis of DHARMa dispersion. Both models included `group`, `phase`, their two-way interaction, and a main effect of `condition` as population-level (fixed) effects. The random-effects structure included by-participant random intercepts and slopes for `phase`, and by-item random intercepts. All categorical predictors used sum-to-zero contrasts.
+
+Four pairs of follow-up models replaced `condition` with the factors it crosses, testing `group` × `phase` × `verb_match`, `group` × `phase` × `noun_match`, `verb_stress` × `verb_match`, and `group` × `verb_stress` × `verb_match`, in accuracy and reaction time separately.
+
+Training accuracy was modeled with a binomial-logit growth curve including `group`, `trial_z`, and their interaction, with by-participant random intercepts and slopes for trial and by-item random intercepts. Non-linear change across training was tested with generalized additive mixed models fit with the `mgcv` package, including a smooth over trial, a by-group difference smooth, by-participant factor smooths, and by-item random effects.
+
+Significance was assessed by nested model comparison; effects involved in a higher-order interaction were tested against a model without that interaction, to preserve marginality. Decision rule: α = .05.
+
+# Descriptive Summary
+
+```{r descriptives}
+by_grp |>
+  mutate(accuracy = sprintf("%.1f%%", 100 * accuracy),
+         rt_correct = sprintf("%.2f s", rt_correct)) |>
+  select(Group = group, Phase = phase, Accuracy = accuracy,
+         `RT (correct)` = rt_correct, n = n_participants) |>
+  kable(caption = "Accuracy and reaction time by group and phase.")
+```
+
+```{r desc-text, results='asis'}
+g <- function(grp, ph, col) {
+  by_grp |> filter(group == grp, phase == ph) |> pull({{ col }})
+}
+cat(sprintf(
+"L1 accuracy was %.1f%% at pre-test and %.1f%% at post-test. L2 accuracy was %.1f%% at pre-test and %.1f%% at post-test. Reaction time fell in both groups, from %.2f to %.2f s in the L1 group and from %.2f to %.2f s in the L2 group.\n\n",
+100*g("L1","pre",accuracy), 100*g("L1","post",accuracy),
+100*g("L2","pre",accuracy), 100*g("L2","post",accuracy),
+g("L1","pre",rt_correct),   g("L1","post",rt_correct),
+g("L2","pre",rt_correct),   g("L2","post",rt_correct)))
+```
+
+# Model Results
+
+Accuracy was modelled with a binomial-logit mixed model and reaction time with a Gaussian model on log RT, both with by-participant intercepts and a slope for phase, and by-item intercepts. Effects were tested by nested model comparison, α = .05.
+
+## Pre-test to post-test
+
+```{r primary-text, results='asis'}
+cat(sprintf(
+"Accuracy showed a group by phase interaction, %s, and an effect of condition, %s. Reaction time showed the same interaction, %s, together with effects of group, %s, phase, %s, and condition, %s.\n\n",
+nmc("accuracy","group:phase",glmm$nmc_all), nmc("accuracy","cond_name",glmm$nmc_all),
+nmc("rt","group:phase",glmm$nmc_all), nmc("rt","group",glmm$nmc_all),
+nmc("rt","phase",glmm$nmc_all), nmc("rt","cond_name",glmm$nmc_all)))
+```
+
+## Violation of the verb cue
+
+```{r followup-text, results='asis'}
+f <- followup$nmc_followup
+cat(sprintf(
+"The cost of a verb mismatch grew from pre-test to post-test in both accuracy, %s, and reaction time, %s, and differed between groups in reaction time, %s. The three-way interaction of group, verb stress and verb match was reliable in both measures, %s for accuracy and %s for reaction time. No noun-match effect reached significance in either measure.\n\n",
+nmc("acc_verbmatch","phase:verb_match",f), nmc("rt_verbmatch","phase:verb_match",f),
+nmc("rt_verbmatch","group:verb_match",f),
+nmc("acc_g_s_vm","group:verb_stress:verb_match",f),
+nmc("rt_g_s_vm","group:verb_stress:verb_match",f)))
+```
+
+## Training
+
+```{r training-text, results='asis'}
+cat(sprintf(
+"Training accuracy improved across trials, %s, and was higher in the L1 group, %s, with no group by trial interaction, %s. A generalised additive model showed that reaction time changed non-linearly across training (edf = %.2f, *p* < .001) while accuracy did not (edf = %.2f), and that the two groups followed the same trajectory.\n\n",
+nmc("training","trial_z",glmm$nmc_all), nmc("training","group",glmm$nmc_all),
+nmc("training","group:trial_z",glmm$nmc_all),
+readRDS("~/Desktop/SP26_data/behavioral_output/gamm/gamm_training_results.rds")$edf_table |>
+  filter(model == "rt", grepl("^s\\(trial\\)", smooth)) |> pull(edf),
+readRDS("~/Desktop/SP26_data/behavioral_output/gamm/gamm_training_results.rds")$edf_table |>
+  filter(model == "accuracy", grepl("^s\\(trial\\)", smooth)) |> pull(edf)))
+```
+
+```{r nmc-table}
+bind_rows(
+  glmm$nmc_all |> mutate(set = "pre/post and training"),
+  followup$nmc_followup |> mutate(set = "verb and noun cue")
+) |>
+  select(Set = set, Model = model, Effect = effect,
+         `χ²` = chisq, df, p) |>
+  kable(digits = 3, caption = "All nested model comparisons.")
+```
+
+# Figures
+
+```{r f1, fig.cap="Model-predicted accuracy by group and phase, with 95% CI."}
+fig("fig1_accuracy.png")
+```
+
+```{r f2, fig.cap="Model-predicted reaction time by group and phase, with 95% CI."}
+fig("fig2_rt.png")
+```
+
+```{r f3, fig.cap="Verb-mismatch cost by group and phase, with 95% CI. Positive means mismatch is worse."}
+fig("fig3_cost_phase.png")
+```
+
+```{r f4, fig.cap="Verb-mismatch cost by group and verb stress, with 95% CI."}
+fig("fig4_cost_stress.png")
+```
+
+```{r f5, fig.cap="Training reaction time. Grey points are observed means in 10-trial bins; lines are the GAMM fit with 95% CI."}
+fig("fig5_training_rt.png")
+```
+

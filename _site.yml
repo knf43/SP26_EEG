@@ -1,0 +1,21 @@
+name: "SP26"
+output_dir: "."
+navbar:
+  title: "SP26"
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Behavioural"
+      href: behavioral.html
+    - text: "ERP"
+      href: erp_results.html
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: false
+    fig_align: center

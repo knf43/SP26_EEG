@@ -1,0 +1,782 @@
+---
+title: "SP26 Data Analysis"
+author: "Kaylee Fernandez"
+date: "2026-05-11"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: false
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 150
+)
+
+library(knitr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+
+source("script.R")
+
+long  <- res$long
+by_pp <- res$by_pp
+by_grp <- res$by_grp
+by_grp_cond <- res$by_grp_cond
+by_grp_train_cond <- res$by_grp_train_cond
+cond_legend_prepost <- res$cond_legend_prepost
+cond_legend_training <- res$cond_legend_training
+
+fmt_p   <- function(x) ifelse(x < .001, "< .001",
+                              sub("^0", "", sprintf("= %.3f", x)))
+fmt_pct <- function(x) sprintf("%.1f%%", 100 * x)
+fmt_rt <- function(x) {
+  out <- character(length(x))
+  bad <- is.na(x) | is.nan(x) | !is.finite(x)
+  out[bad] <- "NA"
+  out[!bad] <- sprintf("%d ms", as.integer(round(x[!bad] * 1000)))
+  out
+}
+
+n_participants <- n_distinct(long$participant)
+n_l1 <- long |> filter(group == "L1") |> pull(participant) |> n_distinct()
+n_l2 <- long |> filter(group == "L2") |> pull(participant) |> n_distinct()
+
+FIG_DIR  <- "~/Desktop/SP26_data/behavioral_output"
+GLMM_DIR <- "~/Desktop/SP26_data/behavioral_output/glmm"
+NEWFIG   <- "figures"
+GAMM_DIR <- "~/Desktop/SP26_data/behavioral_output/gamm"
+
+gamm_path <- file.path(GAMM_DIR, "gamm_training_results.rds")
+has_gamm  <- file.exists(gamm_path)
+if (has_gamm) gamm <- readRDS(gamm_path)
+
+glmm_path <- file.path(GLMM_DIR, "glmm_results.rds")
+followup_path <- file.path(GLMM_DIR, "glmm_followup_results.rds")
+has_glmm     <- file.exists(glmm_path)
+has_followup <- file.exists(followup_path)
+if (has_glmm)     glmm     <- readRDS(glmm_path)
+if (has_followup) followup <- readRDS(followup_path)
+
+fmt_chi <- function(x) sprintf("%.2f", x)
+fmt_p_apa <- function(x) ifelse(x < .001, "< .001",
+                                sub("^0", "", sprintf("= %.3f", x)))
+# Skips quietly when a figure has not been generated, so the document can be
+# knitted while the figure set is being decided.
+fig <- function(name) {
+  p <- file.path(NEWFIG, name)
+  if (file.exists(p)) knitr::include_graphics(p) else invisible(NULL)
+}
+
+get_nmc <- function(model_name, effect_name, src) {
+  src |> filter(model == model_name, effect == effect_name) |> slice(1)
+}
+
+and_list <- function(x) {
+  n <- length(x)
+  if (n == 0) return("")
+  if (n == 1) return(x[1])
+  if (n == 2) return(paste(x, collapse = " and "))
+  paste0(paste(x[-n], collapse = ", "), ", and ", x[n])
+}
+
+or_list <- function(x) {
+  n <- length(x)
+  if (n == 0) return("")
+  if (n == 1) return(x[1])
+  if (n == 2) return(paste(x, collapse = " or "))
+  paste0(paste(x[-n], collapse = ", "), ", or ", x[n])
+}
+
+nmc_effect <- function(model_name, term, label, kind, src) {
+  r <- get_nmc(model_name, term, src)
+  if (nrow(r) == 0) return(NULL)
+  list(label = label, kind = kind, sig = r$p < .05,
+       stat = sprintf("[χ²(%d) = %s; *p* %s]",
+                      r$df, fmt_chi(r$chisq), fmt_p_apa(r$p)))
+}
+
+nmc_prose <- function(model_name, effects, src, lead = "The analysis") {
+  e <- Filter(Negate(is.null),
+              lapply(effects, function(x)
+                nmc_effect(model_name, x[[1]], x[[2]], x[[3]], src)))
+  if (length(e) == 0) return("")
+  sig  <- Filter(function(z)  z$sig, e)
+  nsig <- Filter(function(z) !z$sig, e)
+  labstat <- function(z) paste(z$label, z$stat)
+
+  if (length(sig) == 0) {
+    return(sprintf("%s revealed no significant effects of %s.",
+                   lead, or_list(vapply(e, labstat, character(1)))))
+  }
+
+  sm <- Filter(function(z) z$kind == "main", sig)
+  si <- Filter(function(z) z$kind != "main", sig)
+  chunks <- character(0)
+  if (length(sm) == 1)
+    chunks <- c(chunks, sprintf("a significant main effect of %s", labstat(sm[[1]])))
+  if (length(sm) > 1)
+    chunks <- c(chunks, sprintf("significant main effects of %s",
+                               and_list(vapply(sm, labstat, character(1)))))
+  if (length(si) == 1)
+    chunks <- c(chunks, sprintf("a significant %s interaction", labstat(si[[1]])))
+  if (length(si) > 1)
+    chunks <- c(chunks, sprintf("significant %s interactions",
+                               and_list(vapply(si, labstat, character(1)))))
+  out <- sprintf("%s revealed %s.", lead, and_list(chunks))
+
+  nm <- Filter(function(z) z$kind == "main", nsig)
+  ni <- Filter(function(z) z$kind != "main", nsig)
+  if (length(nm))
+    out <- paste(out, sprintf("The main effect%s of %s %s not significant.",
+                              if (length(nm) > 1) "s" else "",
+                              and_list(vapply(nm, labstat, character(1))),
+                              if (length(nm) > 1) "were" else "was"))
+  if (length(ni))
+    out <- paste(out, sprintf("The %s interaction%s %s not significant.",
+                              and_list(vapply(ni, labstat, character(1))),
+                              if (length(ni) > 1) "s" else "",
+                              if (length(ni) > 1) "were" else "was"))
+  out
+}
+
+r2_text <- function(model_name) {
+  r <- glmm$r2_summary |> filter(model == model_name) |> slice(1)
+  sprintf("marginal R² = %.2f; conditional R² = %.2f",
+          r$R2_marginal, r$R2_conditional)
+}
+
+
+COND_NAME_LABELS <- c(
+  "cond_name1" = "parox / N+ / V+",
+  "cond_name2" = "parox / N− / V+",
+  "cond_name3" = "parox / N+ / V−",
+  "cond_name4" = "oxy / N+ / V+",
+  "cond_name5" = "oxy / N− / V+"
+)
+
+relabel_terms <- function(df) {
+  df |>
+    dplyr::mutate(term = dplyr::recode(term, !!!COND_NAME_LABELS))
+}
+```
+
+# Method
+
+## Participants
+
+`r n_participants` participants completed the experiment: `r n_l1` L1 Spanish speakers and `r n_l2` L2 Spanish learners.
+
+## Procedure
+
+Three-phase Spanish stress-suffix association task in PsychoPy: pre-test (360 trials, 6 blocks), training (120 trials with feedback), post-test (360 trials, parallel structure). On each trial, participants heard a spoken stimulus and selected *PRESENTE* or *PASADO*.
+
+Pre/post stimuli were drawn from six conditions varying in verb stress (paroxytone, oxytone), noun match (Match, Mismatch), and verb match (Match, Mismatch). Training stimuli were two conditions: `parox` (a) and `oxy` (b).
+
+```{r legend-table}
+kable(cond_legend_prepost,
+      caption = "Table 1. Condition coding for pre- and post-test stimuli.",
+      col.names = c("Cond", "Name", "Verb stress", "Verb match", "Suffix tense", "Noun match", "Splice"),
+      align = c("c", "l", "l", "l", "l", "l", "c"))
+```
+
+```{r legend-table-train}
+kable(cond_legend_training,
+      caption = "Table 2. Condition coding for training stimuli.",
+      col.names = c("Cond", "Name", "Verb stress", "Tense"),
+      align = c("c", "l", "l", "l"))
+```
+
+# Summary of Findings
+
+## General Description
+
+Accuracy and RT data from the pre- and post-test phases were analyzed using generalized linear mixed-effects models in R with the `lme4` package. Accuracy (binary correct/incorrect) was modeled with a binomial family and logit link. RT on correct trials (200–5000 ms) was modeled with a Gaussian family on log-transformed RT. Gamma and inverse Gaussian GLMMs on untransformed RT were fit for comparison, following Lo and Andrews (2015), but both were underdispersed (DHARMa dispersion 0.59 and 0.11 respectively, both p < .001) whereas the lognormal model was not (0.94, p = .308). All three families agreed on every effect. Predicted RTs are therefore geometric means, and RT effects are multiplicative. Training-phase accuracy was modeled with a binomial-logit growth-curve GLMM with standardized trial number as a continuous predictor. All models included group (L1, L2), phase (pre, post), their interaction, and condition (6 levels) as fixed effects; the training model included group, trial_z, and their interaction. All categorical predictors used sum-to-zero contrasts so that coefficients represent deviations from the grand mean. Random-effects structure: by-participant intercepts and slopes for phase (or trial in the training model) and by-item intercepts. Model assumptions were assessed with the `DHARMa` package using scaled quantile residuals; QQ-plots and dispersion tests were used to evaluate fit. Statistical significance of main effects and interactions was assessed via nested model comparisons; main effects involved in interactions were tested against a no-interaction model to preserve marginality. Marginal and conditional R² were calculated following Nakagawa and Schielzeth (2013). Decision rule: α = .05.
+
+## Results
+
+```{r summary-results, results='asis', eval=has_glmm}
+primary <- list(
+  list("group",       "group",         "main"),
+  list("phase",       "phase",         "main"),
+  list("cond_name",   "condition",     "main"),
+  list("group:phase", "group × phase", "int")
+)
+training <- list(
+  list("group",         "group",              "main"),
+  list("trial_z",       "trial",              "main"),
+  list("group:trial_z", "group × trial", "int")
+)
+
+cat(sprintf("The accuracy model was fit with a maximal error term (%s). %s ",
+            r2_text("accuracy"), nmc_prose("accuracy", primary, glmm$nmc_all)))
+cat(sprintf("The RT model was fit with a maximal error term (%s). %s ",
+            r2_text("rt"), nmc_prose("rt", primary, glmm$nmc_all)))
+cat(sprintf("The training-phase model was fit with a maximal error term (%s). %s\n\n",
+            r2_text("training"), nmc_prose("training", training, glmm$nmc_all)))
+```
+
+```{r summary-followup, results='asis', eval=has_followup}
+vm <- function(v) list(
+  list(paste0("group:", v),       paste("group ×", sub("_", " ", v)),                 "int"),
+  list(paste0("phase:", v),       paste("phase ×", sub("_", " ", v)),                 "int"),
+  list(paste0("group:phase:", v), paste("group × phase ×", sub("_", " ", v)),    "int")
+)
+sv <- list(
+  list("verb_stress",             "verb stress",                          "main"),
+  list("verb_match",              "verb match",                           "main"),
+  list("verb_stress:verb_match",  "verb stress × verb match",        "int")
+)
+gsv <- list(
+  list("group:verb_stress",                  "group × verb stress",                     "int"),
+  list("group:verb_match",                   "group × verb match",                      "int"),
+  list("verb_stress:verb_match",             "verb stress × verb match",                "int"),
+  list("group:verb_stress:verb_match",       "group × verb stress × verb match",   "int")
+)
+
+cat("Four follow-up analyses examined the verb-mismatch and noun-mismatch effects on accuracy and RT. ")
+cat(nmc_prose("acc_verbmatch",  vm("verb_match"), followup$nmc_followup,
+              "The verb-match accuracy model"), "")
+cat(nmc_prose("rt_verbmatch",   vm("verb_match"), followup$nmc_followup,
+              "The verb-match RT model"), "")
+cat(nmc_prose("acc_nounmatch",  vm("noun_match"), followup$nmc_followup,
+              "The noun-match accuracy model"), "")
+cat(nmc_prose("rt_nounmatch",   vm("noun_match"), followup$nmc_followup,
+              "The noun-match RT model"), "")
+cat(nmc_prose("acc_stress_vm",  sv,  followup$nmc_followup,
+              "The verb-stress × verb-match accuracy model"), "")
+cat(nmc_prose("rt_stress_vm",   sv,  followup$nmc_followup,
+              "The verb-stress × verb-match RT model"), "")
+cat(nmc_prose("acc_g_s_vm",     gsv, followup$nmc_followup,
+              "The group × verb-stress × verb-match accuracy model"), "")
+cat(nmc_prose("rt_g_s_vm",      gsv, followup$nmc_followup,
+              "The group × verb-stress × verb-match RT model"), "\n\n")
+```
+
+
+# Descriptive Results
+
+## Overview by Phase and Group
+
+```{r overall-table}
+overall <- by_grp |>
+  mutate(
+    Accuracy        = fmt_pct(accuracy),
+    `RT correct`    = fmt_rt(rt_correct),
+    `RT incorrect`  = fmt_rt(rt_incorrect),
+    `RT all`        = fmt_rt(rt_all),
+    Phase           = stringr::str_to_title(as.character(phase))
+  ) |>
+  select(Group = group, Phase, Accuracy,
+         `RT correct`, `RT incorrect`, `RT all`,
+         `n incorrect` = total_incorrect, `n` = n_participants)
+
+kable(overall,
+      caption = "Mean accuracy and reaction time (correct, incorrect, all trials) by group and phase.",
+      align = c("l", "l", "r", "r", "r", "r", "r", "r"))
+```
+
+```{r fig1, fig.cap="Mean accuracy (left) and reaction time on correct trials (right) for pre- and post-test phases by group. Error bars = SEM."}
+fig("fig01_accuracy_prepost.png")
+```
+
+```{r fig-rt-comparison, fig.cap="Mean reaction time at pre- and post-test by group: correct only, incorrect only, all trials."}
+fig("fig02_rt_prepost.png")
+```
+
+## Performance by Condition
+
+```{r cond-table}
+cond_tbl <- by_grp_cond |>
+  filter(phase %in% c("pre", "post"), !is.na(cond_name)) |>
+  mutate(
+    Accuracy        = fmt_pct(accuracy),
+    `RT correct`    = fmt_rt(rt_correct),
+    `RT incorrect`  = fmt_rt(rt_incorrect),
+    `RT all`        = fmt_rt(rt_all),
+    Phase           = stringr::str_to_title(as.character(phase))
+  ) |>
+  select(Group = group, Phase, Condition = cond_name,
+         Accuracy, `RT correct`, `RT incorrect`, `RT all`,
+         `n incorrect` = total_incorrect)
+
+kable(cond_tbl,
+      caption = "Accuracy and RT by group, phase, and condition.",
+      align = c("l", "l", "l", "r", "r", "r", "r", "r"))
+```
+
+```{r fig-cond, fig.cap="Accuracy (top) and RT (bottom) at pre- and post-test by condition, by group."}
+fig("fig03_accuracy_condition.png")
+```
+
+## Training Phase
+
+```{r training-cond-table}
+train_cond_tbl <- by_grp_train_cond |>
+  filter(!is.na(cond_name)) |>
+  mutate(
+    Accuracy        = fmt_pct(accuracy),
+    `RT correct`    = fmt_rt(rt_correct),
+    `RT incorrect`  = fmt_rt(rt_incorrect),
+    `RT all`        = fmt_rt(rt_all)
+  ) |>
+  select(Group = group, Condition = cond_name, Accuracy,
+         `RT correct`, `RT incorrect`, `RT all`,
+         `n incorrect` = total_incorrect)
+
+kable(train_cond_tbl,
+      caption = "Training accuracy and RT by group and condition.",
+      align = c("l", "l", "r", "r", "r", "r", "r"))
+```
+
+```{r fig-train-cond, fig.cap="Training accuracy (left) and RT (right) by condition and group."}
+fig("fig04_rt_condition.png")
+```
+
+```{r fig-train-curve, fig.cap="Training phase accuracy (left) and RT (right) across 10-trial bins by group."}
+fig("fig05_training_observed.png")
+```
+
+# Statistical Analysis
+
+```{r glmm-fit-table, eval=has_glmm}
+kable(glmm$r2_summary,
+      caption = "Goodness of fit for each primary model.",
+      col.names = c("Model", "Marginal R²", "Conditional R²"))
+```
+
+## Accuracy (Pre/Post)
+
+```{r acc-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "accuracy") |>
+  select(-model) |>
+  relabel_terms() |>
+  kable(caption = "Accuracy model: fixed-effect estimates (log-odds scale). Condition labels: stress / N (noun match) / V (verb match), where + = Match and − = Mismatch.",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r acc-predicted, eval=has_glmm}
+glmm$interp_acc |>
+  dplyr::select(group, phase, predicted_pct, CI_pct) |>
+  kable(caption = "Predicted accuracy by group and phase.",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+```{r fig-pred-acc, fig.cap="Model-predicted accuracy by group and phase."}
+fig("fig1_accuracy.png")
+```
+
+```{r acc-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("accuracy", "group", glmm$nmc_all)
+nmc_phase <- get_nmc("accuracy", "phase", glmm$nmc_all)
+nmc_int   <- get_nmc("accuracy", "group:phase", glmm$nmc_all)
+nmc_cond  <- get_nmc("accuracy", "cond_name", glmm$nmc_all)
+
+cat("**Effects on accuracy (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p)))
+cat(sprintf("- Group × Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+cat(sprintf("- Condition: χ²(%d) = %s, *p* %s\n\n",
+            nmc_cond$df, fmt_chi(nmc_cond$chisq), fmt_p_apa(nmc_cond$p)))
+
+cat("**Direction:** L2 accuracy increased from pre to post; L1 accuracy was stable. Condition main effect present.\n\n")
+```
+
+## Reaction Time (Pre/Post)
+
+```{r rt-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "rt") |>
+  select(-model) |>
+  relabel_terms() |>
+  kable(caption = "RT model: fixed-effect estimates (log RT scale; positive β = longer RT, i.e. slower). Condition labels: stress / N / V, where + = Match and − = Mismatch.",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r rt-predicted, eval=has_glmm}
+glmm$interp_rt |>
+  dplyr::select(group, phase, predicted_ms, CI_ms) |>
+  kable(caption = "Predicted RT by group and phase (geometric means, back-transformed from log RT to ms).",
+        col.names = c("Group", "Phase", "Predicted", "95% CI"))
+```
+
+```{r fig-pred-rt, fig.cap="Model-predicted RT by group and phase."}
+fig("fig2_rt.png")
+```
+
+```{r rt-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("rt", "group", glmm$nmc_all)
+nmc_phase <- get_nmc("rt", "phase", glmm$nmc_all)
+nmc_int   <- get_nmc("rt", "group:phase", glmm$nmc_all)
+nmc_cond  <- get_nmc("rt", "cond_name", glmm$nmc_all)
+
+cat("**Effects on RT (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_phase$df, fmt_chi(nmc_phase$chisq), fmt_p_apa(nmc_phase$p)))
+cat(sprintf("- Group × Phase: χ²(%d) = %s, *p* %s\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+cat(sprintf("- Condition: χ²(%d) = %s, *p* %s\n\n",
+            nmc_cond$df, fmt_chi(nmc_cond$chisq), fmt_p_apa(nmc_cond$p)))
+
+cat("**Direction:** L1 faster than L2 overall. Both groups faster at post than at pre. Condition main effect present.\n\n")
+```
+
+## Training (Growth Curve)
+
+```{r train-fixed-table, eval=has_glmm}
+glmm$fixed_all |>
+  filter(model == "training") |>
+  select(-model) |>
+  kable(caption = "Training model: fixed-effect estimates (log-odds scale).",
+        col.names = c("Term", "β", "SE", "CI low", "CI high", "p"),
+        digits = 3)
+```
+
+```{r fig-train-traj, fig.cap="Per-participant predicted training trajectories from the growth-curve GLMM."}
+fig("fig08_training_growth_linear.png")
+```
+
+```{r train-results, results='asis', eval=has_glmm}
+nmc_group <- get_nmc("training", "group", glmm$nmc_all)
+nmc_trial <- get_nmc("training", "trial_z", glmm$nmc_all)
+nmc_int   <- get_nmc("training", "group:trial_z", glmm$nmc_all)
+
+cat("**Effects on training accuracy (NMC):**\n\n")
+cat(sprintf("- Group: χ²(%d) = %s, *p* %s\n",
+            nmc_group$df, fmt_chi(nmc_group$chisq), fmt_p_apa(nmc_group$p)))
+cat(sprintf("- Trial: χ²(%d) = %s, *p* %s\n",
+            nmc_trial$df, fmt_chi(nmc_trial$chisq), fmt_p_apa(nmc_trial$p)))
+cat(sprintf("- Group × Trial: χ²(%d) = %s, *p* %s\n\n",
+            nmc_int$df, fmt_chi(nmc_int$chisq), fmt_p_apa(nmc_int$p)))
+
+cat("**Direction:** L1 higher accuracy than L2 throughout training. Trial effect not significant. No group × trial interaction.\n\n")
+```
+
+## Forest Plot of Primary Fixed Effects
+
+```{r fig-forest, fig.cap="Fixed-effect estimates from the three primary models with 95% CIs. Condition main effects omitted."}
+fig("fig09_forest.png")
+```
+
+# Follow-Up: Verb- and Noun-Mismatch Effects
+
+Follow-up analyses examined the verb-mismatch and noun-mismatch effects on accuracy and RT. Four pairs of models test (a) `group × phase × verb_match`, (b) `group × phase × noun_match`, (c) `verb_stress × verb_match`, and (d) `group × verb_stress × verb_match`. Mismatch cost convention: positive cost = mismatch worse than match (= prediction surprise). RT cost = Mismatch − Match (ms); accuracy cost = Match − Mismatch (percentage points).
+
+## Verb match × group × phase
+
+```{r fig-followup-rt-vm, fig.cap="Model-predicted RT by verb match, group, and phase.", eval=has_followup}
+fig("fig11_verbmatch_rt.png")
+```
+
+```{r fig-followup-acc-vm, fig.cap="Model-predicted accuracy by verb match, group, and phase.", eval=has_followup}
+fig("fig10_verbmatch_accuracy.png")
+```
+
+```{r fig-cost-rt-phase, fig.cap="Model-derived RT mismatch cost by group and phase. Positive = mismatch slower than match.", eval=has_followup}
+fig("fig3_cost_phase.png")
+```
+
+```{r fig-cost-acc-phase, fig.cap="Model-derived accuracy mismatch cost by group and phase. Positive = mismatch less accurate than match.", eval=has_followup}
+fig("fig14_cost_accuracy_phase.png")
+```
+
+```{r q1q2-cost-table, eval=has_followup}
+followup$cost_q1q2 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Verb-match and noun-match: model-derived match/mismatch values and cost by group and phase.",
+        col.names = c("Factor", "Measure", "Group", "Phase", "Match", "Mismatch", "Cost"))
+```
+
+```{r q1-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_verbmatch", "rt_verbmatch")) |>
+  kable(caption = "Verb-match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q1-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_verbmatch", "group:phase:verb_match", followup$nmc_followup)
+nmc_acc_g    <- get_nmc("acc_verbmatch", "group:verb_match",       followup$nmc_followup)
+nmc_acc_p    <- get_nmc("acc_verbmatch", "phase:verb_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_verbmatch",  "group:phase:verb_match", followup$nmc_followup)
+nmc_rt_g     <- get_nmc("rt_verbmatch",  "group:verb_match",       followup$nmc_followup)
+nmc_rt_p     <- get_nmc("rt_verbmatch",  "phase:verb_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_g$df, fmt_chi(nmc_acc_g$chisq), fmt_p_apa(nmc_acc_g$p)))
+cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_p$df, fmt_chi(nmc_acc_p$chisq), fmt_p_apa(nmc_acc_p$p)))
+cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_g$df, fmt_chi(nmc_rt_g$chisq), fmt_p_apa(nmc_rt_g$p)))
+cat(sprintf("- Phase × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_p$df, fmt_chi(nmc_rt_p$chisq), fmt_p_apa(nmc_rt_p$p)))
+cat(sprintf("- Group × Phase × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction (RT):** L1 showed a larger verb-mismatch cost than L2 overall. Verb-mismatch cost was larger at post than at pre. The pattern of growth from pre to post was similar in both groups.\n\n")
+```
+
+## Noun match × group × phase
+
+```{r fig-followup-rt-nm, fig.cap="Model-predicted RT by noun match, group, and phase.", eval=has_followup}
+fig("fig13_nounmatch_rt.png")
+```
+
+```{r fig-followup-acc-nm, fig.cap="Model-predicted accuracy by noun match, group, and phase.", eval=has_followup}
+fig("fig12_nounmatch_accuracy.png")
+```
+
+```{r q2-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_nounmatch", "rt_nounmatch")) |>
+  kable(caption = "Noun-match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q2-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_nounmatch", "group:phase:noun_match", followup$nmc_followup)
+nmc_acc_g    <- get_nmc("acc_nounmatch", "group:noun_match",       followup$nmc_followup)
+nmc_acc_p    <- get_nmc("acc_nounmatch", "phase:noun_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_nounmatch",  "group:phase:noun_match", followup$nmc_followup)
+nmc_rt_g     <- get_nmc("rt_nounmatch",  "group:noun_match",       followup$nmc_followup)
+nmc_rt_p     <- get_nmc("rt_nounmatch",  "phase:noun_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_g$df, fmt_chi(nmc_acc_g$chisq), fmt_p_apa(nmc_acc_g$p)))
+cat(sprintf("- Phase × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_p$df, fmt_chi(nmc_acc_p$chisq), fmt_p_apa(nmc_acc_p$p)))
+cat(sprintf("- Group × Phase × noun match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_g$df, fmt_chi(nmc_rt_g$chisq), fmt_p_apa(nmc_rt_g$p)))
+cat(sprintf("- Phase × noun match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_p$df, fmt_chi(nmc_rt_p$chisq), fmt_p_apa(nmc_rt_p$p)))
+cat(sprintf("- Group × Phase × noun match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction:** No noun-match effects reached significance in either accuracy or RT.\n\n")
+```
+
+## Verb stress × verb match
+
+```{r fig-cost-rt-stress, fig.cap="Model-derived RT verb-mismatch cost by stress type.", eval=has_followup}
+fig("fig17_cost_rt_stress.png")
+```
+
+```{r fig-cost-acc-stress, fig.cap="Model-derived accuracy verb-mismatch cost by stress type.", eval=has_followup}
+fig("fig16_cost_accuracy_stress.png")
+```
+
+```{r q3-cost-table, eval=has_followup}
+followup$cost_q3 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Verb stress × verb match: model-derived match/mismatch values and verb-mismatch cost by stress type.",
+        col.names = c("Factor", "Measure", "Stress", "Match", "Mismatch", "Cost"))
+```
+
+```{r q3-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_stress_vm", "rt_stress_vm")) |>
+  kable(caption = "Verb stress × verb match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q3-results, results='asis', eval=has_followup}
+nmc_acc_int <- get_nmc("acc_stress_vm", "verb_stress:verb_match", followup$nmc_followup)
+nmc_acc_vs  <- get_nmc("acc_stress_vm", "verb_stress",            followup$nmc_followup)
+nmc_acc_vm  <- get_nmc("acc_stress_vm", "verb_match",             followup$nmc_followup)
+nmc_rt_int  <- get_nmc("rt_stress_vm",  "verb_stress:verb_match", followup$nmc_followup)
+nmc_rt_vs   <- get_nmc("rt_stress_vm",  "verb_stress",            followup$nmc_followup)
+nmc_rt_vm   <- get_nmc("rt_stress_vm",  "verb_match",             followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_vs$df, fmt_chi(nmc_acc_vs$chisq), fmt_p_apa(nmc_acc_vs$p)))
+cat(sprintf("- Verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_vm$df, fmt_chi(nmc_acc_vm$chisq), fmt_p_apa(nmc_acc_vm$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_int$df, fmt_chi(nmc_acc_int$chisq), fmt_p_apa(nmc_acc_int$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_vs$df, fmt_chi(nmc_rt_vs$chisq), fmt_p_apa(nmc_rt_vs$p)))
+cat(sprintf("- Verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_vm$df, fmt_chi(nmc_rt_vm$chisq), fmt_p_apa(nmc_rt_vm$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_int$df, fmt_chi(nmc_rt_int$chisq), fmt_p_apa(nmc_rt_int$p)))
+
+cat("**Direction (RT):** Verb-mismatch cost was larger for paroxytone stimuli (~46 ms) than for oxytone stimuli (~14 ms).\n\n")
+```
+
+## Group × verb stress × verb match
+
+```{r fig-cost-rt-group-stress, fig.cap="Model-derived RT verb-mismatch cost by group and stress type.", eval=has_followup}
+fig("fig4_cost_stress.png")
+```
+
+```{r fig-cost-acc-group-stress, fig.cap="Model-derived accuracy verb-mismatch cost by group and stress type.", eval=has_followup}
+fig("fig18_cost_accuracy_group_stress.png")
+```
+
+```{r q4-cost-table, eval=has_followup}
+followup$cost_q4 |>
+  mutate(across(c(Match, Mismatch, cost), \(x) round(x, 2))) |>
+  kable(caption = "Group × verb stress × verb match: model-derived match/mismatch values and verb-mismatch cost by group, stress type, and measure.",
+        col.names = c("Factor", "Measure", "Group", "Stress", "Match", "Mismatch", "Cost"))
+```
+
+```{r q4-nmc-table, eval=has_followup}
+followup$nmc_followup |>
+  filter(model %in% c("acc_g_s_vm", "rt_g_s_vm")) |>
+  kable(caption = "Group × verb stress × verb match: nested model comparisons.",
+        col.names = c("Model", "Effect", "χ²", "df", "p"),
+        digits = 3)
+```
+
+```{r q4-results, results='asis', eval=has_followup}
+nmc_acc_3way <- get_nmc("acc_g_s_vm", "group:verb_stress:verb_match", followup$nmc_followup)
+nmc_acc_gs   <- get_nmc("acc_g_s_vm", "group:verb_stress",            followup$nmc_followup)
+nmc_acc_gv   <- get_nmc("acc_g_s_vm", "group:verb_match",             followup$nmc_followup)
+nmc_acc_sv   <- get_nmc("acc_g_s_vm", "verb_stress:verb_match",       followup$nmc_followup)
+nmc_rt_3way  <- get_nmc("rt_g_s_vm",  "group:verb_stress:verb_match", followup$nmc_followup)
+nmc_rt_gs    <- get_nmc("rt_g_s_vm",  "group:verb_stress",            followup$nmc_followup)
+nmc_rt_gv    <- get_nmc("rt_g_s_vm",  "group:verb_match",             followup$nmc_followup)
+nmc_rt_sv    <- get_nmc("rt_g_s_vm",  "verb_stress:verb_match",       followup$nmc_followup)
+
+cat("**Accuracy effects (NMC):**\n\n")
+cat(sprintf("- Group × verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_gs$df, fmt_chi(nmc_acc_gs$chisq), fmt_p_apa(nmc_acc_gs$p)))
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_gv$df, fmt_chi(nmc_acc_gv$chisq), fmt_p_apa(nmc_acc_gv$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_acc_sv$df, fmt_chi(nmc_acc_sv$chisq), fmt_p_apa(nmc_acc_sv$p)))
+cat(sprintf("- Group × verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_acc_3way$df, fmt_chi(nmc_acc_3way$chisq), fmt_p_apa(nmc_acc_3way$p)))
+
+cat("**RT effects (NMC):**\n\n")
+cat(sprintf("- Group × verb stress: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_gs$df, fmt_chi(nmc_rt_gs$chisq), fmt_p_apa(nmc_rt_gs$p)))
+cat(sprintf("- Group × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_gv$df, fmt_chi(nmc_rt_gv$chisq), fmt_p_apa(nmc_rt_gv$p)))
+cat(sprintf("- Verb stress × verb match: χ²(%d) = %s, *p* %s\n",
+            nmc_rt_sv$df, fmt_chi(nmc_rt_sv$chisq), fmt_p_apa(nmc_rt_sv$p)))
+cat(sprintf("- Group × verb stress × verb match: χ²(%d) = %s, *p* %s\n\n",
+            nmc_rt_3way$df, fmt_chi(nmc_rt_3way$chisq), fmt_p_apa(nmc_rt_3way$p)))
+
+cat("**Direction (RT):** L1 speakers showed positive verb-mismatch costs on both paroxytone (~41 ms) and oxytone (~54 ms) stimuli. L2 learners showed a positive cost on paroxytone (~70 ms) and a negative cost on oxytone (−51 ms).\n\n")
+```
+
+# Training: Non-Linear Learning Curves
+
+The linear growth curve above assumes accuracy and RT change at a constant rate across the 120 training trials. Generalised additive mixed models were fit to test that assumption, with a smooth over trial and a by-group difference smooth. `group` was coded as an ordered factor, so the first smooth is the L1 curve and the second is the L2 departure from it.
+
+```{r gamm-edf-table, eval=has_gamm}
+gamm$edf_table |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  kable(caption = "Training GAMM smooth terms. An edf of 1 means the smooth collapsed to a straight line.")
+```
+
+```{r gamm-results, results='asis', eval=has_gamm}
+e <- gamm$edf_table
+grab <- function(model, pattern) {
+  r <- e[e$model == model & grepl(pattern, e$smooth), ][1, ]
+  sprintf("edf = %.2f, *p* %s", r$edf, fmt_p_apa(r$`p-value`))
+}
+cat(sprintf(
+"The accuracy smooth over trial returned %s, so the learning curve is linear and the growth-curve GLMM above is the appropriate model. The RT smooth returned %s. The group difference smooth was %s for accuracy and %s for RT, so the two groups follow the same trajectory in both measures.\n\n",
+  grab("accuracy", "^s\\(trial\\)$"),
+  grab("rt", "^s\\(trial\\)$"),
+  grab("accuracy", "group_ord"),
+  grab("rt", "group_ord")))
+```
+
+```{r fig-gamm-acc, fig.cap="Training accuracy, GAMM fit. Grey points are observed means in 10-trial bins.", eval=has_gamm}
+fig("fig20_gamm_accuracy.png")
+```
+
+```{r fig-gamm-rt, fig.cap="Training reaction time, GAMM fit. Grey points are observed means in 10-trial bins.", eval=has_gamm}
+fig("fig5_training_rt.png")
+```
+
+```{r fig-gamm-diff-acc, fig.cap="Training accuracy, L2 minus L1 difference smooth with 95% CI.", eval=has_gamm}
+fig("fig22_gamm_diff_accuracy.png")
+```
+
+```{r fig-gamm-diff-rt, fig.cap="Training reaction time, L2 minus L1 difference smooth with 95% CI.", eval=has_gamm}
+fig("fig6_training_diff.png")
+```
+
+# Diagnostics
+
+```{r diag-table, eval=has_glmm}
+glmm$diagnostics_summary |>
+  kable(caption = "DHARMa diagnostic summary. Dispersion p > .05 = adequate variance fit. KS p-values are oversensitive at large n; QQ-plots were inspected visually.",
+        col.names = c("Model", "KS p", "Dispersion", "Dispersion p"))
+```
+
+```{r diag-acc, fig.cap="DHARMa diagnostics: accuracy model."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_accuracy.png"))
+```
+
+```{r diag-rt, fig.cap="DHARMa diagnostics: RT model (lognormal)."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_rt.png"))
+```
+
+```{r diag-train, fig.cap="DHARMa diagnostics: training growth-curve model."}
+knitr::include_graphics(file.path(GLMM_DIR, "dharma_training.png"))
+```
+
+# Per-Participant Summary
+
+```{r pp-table}
+pp_tbl <- by_pp |>
+  mutate(
+    Accuracy       = fmt_pct(accuracy),
+    `RT correct`   = fmt_rt(rt_correct),
+    `RT incorrect` = fmt_rt(rt_incorrect),
+    `RT all`       = fmt_rt(rt_all),
+    Phase          = stringr::str_to_title(as.character(phase))
+  ) |>
+  select(Participant = participant, Group = group, Phase,
+         `n trials` = n_trials, `n incorrect` = n_incorrect,
+         Accuracy, `RT correct`, `RT incorrect`, `RT all`)
+
+kable(pp_tbl,
+      caption = "Per-participant accuracy and RT by phase.",
+      align = c("r", "l", "l", "r", "r", "r", "r", "r", "r"))
+```
+
+# Session Info
+
+```{r session, echo=FALSE}
+sessionInfo()
+```

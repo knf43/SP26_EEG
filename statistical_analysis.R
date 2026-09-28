@@ -105,13 +105,19 @@ mod_acc <- glmer(
 
 # --- Model 2: RT (testing, correct only) ---
 message("\n=== Fitting Model 2: RT (testing, correct only) ===")
-long_testing_rt <- filter(long_testing, !is.na(rt_correct), rt_correct > 0)
-mod_rt <- glmer(
-  rt_correct ~ group * phase + cond_name +
+# Lognormal: Gaussian on log(RT). Chosen by rt_family_check.R, where it was
+# the only family with acceptable dispersion (0.943, p = .308) against the
+# Gamma (0.590, p < .001) and the inverse Gaussian (0.105, p < .001).
+# All three agreed on every effect, so this is a fit choice, not a
+# conclusion-changing one.
+long_testing_rt <- filter(long_testing, !is.na(rt_correct), rt_correct > 0) |>
+  mutate(log_rt = log(rt_correct))
+ctrl_lmm <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
+mod_rt <- lmer(
+  log_rt ~ group * phase + cond_name +
     (1 + phase | participant) + (1 | item),
   data    = long_testing_rt,
-  family  = Gamma(link = "log"),
-  control = ctrl_bin
+  control = ctrl_lmm
 )
 
 # --- Model 3: Training (growth curve) ---
@@ -163,96 +169,54 @@ print(diagnostics_summary)
 # =============================================================
 # Drop each fixed-effect term one at a time, compare to full model
 
-nmc_compare <- function(full_model, drop_term, label, data) {
-  full_formula <- formula(full_model)
-  reduced_formula <- update(full_formula, paste(". ~ . -", drop_term))
-
-  family_info <- family(full_model)
-  ctrl <- if (inherits(full_model, "glmerMod")) ctrl_bin else lmerControl()
-
-  if (inherits(full_model, "glmerMod")) {
-    reduced_mod <- glmer(reduced_formula, data = data,
-                         family = family_info, control = ctrl)
-  } else {
-    reduced_mod <- lmer(reduced_formula, data = data, control = ctrl)
+# update() is used rather than a fresh glmer() call because anova.merMod
+# compares models by the deparsed name of their data argument. Refitting with
+# `data = data` makes that name "data" instead of "long_testing", and lme4
+# then refuses with "all models must be fit to the same data object".
+#
+# The chi-square df column is called "Chi Df" in older lme4 and "Df" in
+# current versions, so it is looked up by whichever is present.
+nmc_compare <- function(model, drop_term, label) {
+  reduced <- update(model, as.formula(paste(". ~ . -", drop_term)))
+  cmp <- anova(reduced, model)
+  df_col <- if ("Chi Df" %in% names(cmp)) "Chi Df" else "Df"
+  # A df of 0 means the term was never removed. Fail loudly rather than
+  # reporting it as a null effect.
+  if (isTRUE(cmp[[df_col]][2] == 0)) {
+    stop("dropping ", drop_term, " from ", label, " changed nothing")
   }
-
-  cmp <- anova(reduced_mod, full_model)
   data.frame(
-    model = label,
+    model  = label,
     effect = drop_term,
-    chisq = round(cmp$Chisq[2], 2),
-    df = cmp$`Chi Df`[2],
-    p = signif(cmp$`Pr(>Chisq)`[2], 3)
+    chisq  = round(cmp$Chisq[2], 2),
+    df     = cmp[[df_col]][2],
+    p      = signif(cmp$`Pr(>Chisq)`[2], 3)
   )
 }
 
-nmc_acc <- bind_rows(
-  nmc_compare(mod_acc, "group:phase", "accuracy", long_testing),
-  nmc_compare(mod_acc, "cond_name",   "accuracy", long_testing)
-)
-# For accuracy main effects (group, phase) we drop them along with the interaction
-# in a two-step process to preserve marginality
-mod_acc_nointer <- update(mod_acc, . ~ . - group:phase)
-nmc_acc <- bind_rows(
-  nmc_acc,
-  data.frame(
-    model = "accuracy", effect = "group",
-    chisq = round(anova(update(mod_acc_nointer, . ~ . - group), mod_acc_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_acc_nointer, . ~ . - group), mod_acc_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_acc_nointer, . ~ . - group), mod_acc_nointer)$`Pr(>Chisq)`[2], 3)
-  ),
-  data.frame(
-    model = "accuracy", effect = "phase",
-    chisq = round(anova(update(mod_acc_nointer, . ~ . - phase), mod_acc_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_acc_nointer, . ~ . - phase), mod_acc_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_acc_nointer, . ~ . - phase), mod_acc_nointer)$`Pr(>Chisq)`[2], 3)
-  )
-)
+# Main effects involved in an interaction are tested against a no-interaction
+# model, so marginality is preserved.
+nmc_main <- function(model, drop_term, label, interactions) {
+  base <- update(model, as.formula(paste(". ~ . -",
+                                         paste(interactions, collapse = " - "))))
+  nmc_compare(base, drop_term, label)
+}
 
-nmc_rt <- bind_rows(
-  nmc_compare(mod_rt, "group:phase", "rt", long_testing_rt),
-  nmc_compare(mod_rt, "cond_name",   "rt", long_testing_rt)
-)
-mod_rt_nointer <- update(mod_rt, . ~ . - group:phase)
-nmc_rt <- bind_rows(
-  nmc_rt,
-  data.frame(
-    model = "rt", effect = "group",
-    chisq = round(anova(update(mod_rt_nointer, . ~ . - group), mod_rt_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_rt_nointer, . ~ . - group), mod_rt_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_rt_nointer, . ~ . - group), mod_rt_nointer)$`Pr(>Chisq)`[2], 3)
-  ),
-  data.frame(
-    model = "rt", effect = "phase",
-    chisq = round(anova(update(mod_rt_nointer, . ~ . - phase), mod_rt_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_rt_nointer, . ~ . - phase), mod_rt_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_rt_nointer, . ~ . - phase), mod_rt_nointer)$`Pr(>Chisq)`[2], 3)
-  )
-)
+nmc_all <- bind_rows(
+  nmc_compare(mod_acc, "group:phase", "accuracy"),
+  nmc_compare(mod_acc, "cond_name",   "accuracy"),
+  nmc_main(mod_acc, "group", "accuracy", "group:phase"),
+  nmc_main(mod_acc, "phase", "accuracy", "group:phase"),
 
-# Training NMC
-nmc_train <- bind_rows(
-  nmc_compare(mod_training, "group:trial_z", "training", long_training)
-)
-mod_train_nointer <- update(mod_training, . ~ . - group:trial_z)
-nmc_train <- bind_rows(
-  nmc_train,
-  data.frame(
-    model = "training", effect = "group",
-    chisq = round(anova(update(mod_train_nointer, . ~ . - group), mod_train_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_train_nointer, . ~ . - group), mod_train_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_train_nointer, . ~ . - group), mod_train_nointer)$`Pr(>Chisq)`[2], 3)
-  ),
-  data.frame(
-    model = "training", effect = "trial_z",
-    chisq = round(anova(update(mod_train_nointer, . ~ . - trial_z), mod_train_nointer)$Chisq[2], 2),
-    df    = anova(update(mod_train_nointer, . ~ . - trial_z), mod_train_nointer)$`Chi Df`[2],
-    p     = signif(anova(update(mod_train_nointer, . ~ . - trial_z), mod_train_nointer)$`Pr(>Chisq)`[2], 3)
-  )
-)
+  nmc_compare(mod_rt, "group:phase", "rt"),
+  nmc_compare(mod_rt, "cond_name",   "rt"),
+  nmc_main(mod_rt, "group", "rt", "group:phase"),
+  nmc_main(mod_rt, "phase", "rt", "group:phase"),
 
-nmc_all <- bind_rows(nmc_acc, nmc_rt, nmc_train)
+  nmc_compare(mod_training, "group:trial_z", "training"),
+  nmc_main(mod_training, "group",   "training", "group:trial_z"),
+  nmc_main(mod_training, "trial_z", "training", "group:trial_z")
+)
 print(nmc_all)
 
 # =============================================================
@@ -297,9 +261,9 @@ print(r2_summary)
 # For accuracy: report population-level predicted probabilities by group x phase
 # For RT: report population-level predicted RT in ms
 
-pred_acc <- ggpredict(mod_acc, terms = c("phase", "group"))
+pred_acc <- ggpredict(mod_acc, terms = c("phase", "group"), bias_correction = TRUE)
 pred_rt  <- ggpredict(mod_rt,  terms = c("phase", "group"))
-pred_train <- ggpredict(mod_training, terms = c("trial_z [all]", "group"))
+pred_train <- ggpredict(mod_training, terms = c("trial_z [all]", "group"), bias_correction = TRUE)
 
 interp_acc <- as.data.frame(pred_acc) |>
   rename(phase = x, group = group, predicted_prob = predicted,
@@ -307,12 +271,14 @@ interp_acc <- as.data.frame(pred_acc) |>
   mutate(predicted_pct = sprintf("%.1f%%", 100 * predicted_prob),
          CI_pct = sprintf("[%.1f%%, %.1f%%]", 100 * CI_low, 100 * CI_high))
 
+# exp() of a mean on the log scale is the geometric mean, which is what is
+# reported here and what the methods section states.
 interp_rt <- as.data.frame(pred_rt) |>
   rename(phase = x, group = group, predicted_rt = predicted,
          CI_low = conf.low, CI_high = conf.high) |>
-  mutate(predicted_ms = sprintf("%d ms", round(predicted_rt * 1000)),
+  mutate(predicted_ms = sprintf("%d ms", round(exp(predicted_rt) * 1000)),
          CI_ms = sprintf("[%d, %d]",
-                         round(CI_low * 1000), round(CI_high * 1000)))
+                         round(exp(CI_low) * 1000), round(exp(CI_high) * 1000)))
 
 # =============================================================
 # SECTION 8: PLOTS
@@ -335,14 +301,14 @@ ggsave(path(GLMM_DIR, "pred_accuracy.png"), p_pred_acc,
        width = 7, height = 5, dpi = 150)
 
 p_pred_rt <- ggplot(as.data.frame(pred_rt),
-                   aes(x = x, y = predicted * 1000,
+                   aes(x = x, y = exp(predicted) * 1000,
                        colour = group, group = group)) +
-  geom_pointrange(aes(ymin = conf.low * 1000, ymax = conf.high * 1000),
+  geom_pointrange(aes(ymin = exp(conf.low) * 1000, ymax = exp(conf.high) * 1000),
                   position = position_dodge(0.2), size = 0.8) +
   geom_line(position = position_dodge(0.2)) +
   labs(title = "Model-predicted RT by group and phase",
-       x = "Phase", y = "Predicted RT (ms)",
-       caption = "Error bars = 95% CI from GLMM (Gamma-log)")
+       x = "Phase", y = "Predicted RT (ms, geometric mean)",
+       caption = "Error bars = 95% CI from the lognormal model")
 ggsave(path(GLMM_DIR, "pred_rt.png"), p_pred_rt,
        width = 7, height = 5, dpi = 150)
 

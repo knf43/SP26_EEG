@@ -1,0 +1,312 @@
+---
+title: "SP26 ERP Results"
+author: "Kaylee Fernandez"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: false
+    theme: cosmo
+---
+
+```{css, echo=FALSE}
+caption, .figure p.caption, p.caption {
+  font-size: 88%;
+  color: #444;
+  text-align: left;
+  padding-top: 0.4em;
+  padding-bottom: 0.6em;
+  border-left: 3px solid #ddd;
+  padding-left: 0.7em;
+  margin-top: 0.3em;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 150
+)
+
+library(knitr)
+library(dplyr)
+library(tidyr)
+
+# configuration
+WAVE_FILE <- "~/Kaylee_SP26/sp26_waveforms_event.csv"
+FIG_DIR   <- "figures/erp"   # inside the project so the site can serve them
+
+# data
+w <- readr::read_csv(WAVE_FILE, show_col_types = FALSE) |>
+  mutate(letter  = c("a","b","c","d","e","f")[cond],
+         session = factor(session, levels = c("exp_pre","exp_post"),
+                          labels = c("Pre", "Post")),
+         group   = factor(group, levels = c("L1","L2")))
+
+n_l1 <- w |> filter(group == "L1") |> pull(participant) |> n_distinct()
+n_l2 <- w |> filter(group == "L2") |> pull(participant) |> n_distinct()
+
+# helper functions
+# participant means inside a window, then group means and standard errors
+cell_means <- function(ev, roi_name, w0, w1, levels_map) {
+  w |>
+    filter(event == ev, roi == roi_name, time_ms >= w0, time_ms <= w1,
+           letter %in% names(levels_map)) |>
+    mutate(level = factor(unname(levels_map[letter]),
+                          levels = unique(unname(levels_map)))) |>
+    group_by(participant, group, session, level) |>
+    summarise(amp = mean(amplitude), .groups = "drop") |>
+    group_by(group, session, level) |>
+    summarise(M = mean(amp), SE = sd(amp) / sqrt(n()), n = n(), .groups = "drop")
+}
+
+wide_tbl <- function(cm) {
+  cm |>
+    mutate(cell = sprintf("%.2f (%.2f)", M, SE)) |>
+    select(group, session, level, cell) |>
+    pivot_wider(names_from = level, values_from = cell) |>
+    rename(Group = group, Session = session)
+}
+
+diff_tbl <- function(cm, a, b) {
+  cm |>
+    select(group, session, level, M) |>
+    pivot_wider(names_from = level, values_from = M) |>
+    mutate(Difference = sprintf("%.2f", .data[[b]] - .data[[a]])) |>
+    select(Group = group, Session = session, Difference)
+}
+
+# Returns the path only when the file is there, so a missing figure skips
+# instead of stopping the knit.
+fig <- function(f) {
+  p <- file.path(FIG_DIR, f)
+  if (file.exists(p)) p else character(0)
+}
+
+# numbered labels, so captions read as labels rather than as text
+.figN <- 0; .tabN <- 0
+figcap <- function(txt) { .figN <<- .figN + 1; sprintf("Figure %d. %s", .figN, txt) }
+tabcap <- function(txt) { .tabN <<- .tabN + 1; sprintf("Table %d. %s",  .tabN, txt) }
+
+STRESS   <- c(a="Paroxytone", d="Paroxytone", b="Oxytone", f="Oxytone")
+NOUNVIOL <- c(a="Match", f="Match", b="Mismatch", d="Mismatch")
+VERBVIOL <- c(a="Match", f="Match", c="Mismatch", e="Mismatch")
+```
+
+# Preprocessing
+
+Filter settings, ocular correction by independent component analysis and the artifact rejection criterion follow the Lund protocol as described in Söderström, Horne and Roll (2016) and Hed, Schremm, Horne and Roll (2019).
+
+- Continuous data were imported from BrainVision format, channels 1 to 31.
+- Trigger latencies were corrected trial by trial against the recorded audio channel. The measured latency averaged 116.1 ms (*SD* = 3.4). Practice trials were relabelled and excluded.
+- Data were resampled to 500 Hz.
+- Data were re-referenced to linked mastoids (TP9, TP10), restoring FCz and leaving 30 channels.
+- Data were band-pass filtered from 0.05 to 30 Hz.
+- Independent component analysis was computed on sentence-locked epochs and the resulting weights applied to the continuous data. Components were classified with ICLabel, and ocular components were identified by visual inspection and removed.
+- Epochs were extracted from −200 to 1000 ms around each target event.
+- Each epoch was baseline-corrected using the 200 ms before its own event.
+- Epochs whose peak-to-peak amplitude exceeded 200 µV in any channel were rejected as artifactual.
+
+```{r ica-table}
+readr::read_csv("~/Kaylee_SP26/sp26_ica_log.csv", show_col_types = FALSE) |>
+  filter(participant %in% unique(w$participant)) |>
+  arrange(group, participant) |>
+  transmute(Participant = participant,
+            Group = group,
+            `Components removed` = removed,
+            n = n_removed,
+            `Variance removed` = sprintf("%.1f%%", pct_var_removed),
+            `ICLabel eye probability` = eye_probabilities) |>
+  kable(caption = tabcap("Independent components removed, by participant. Components were flagged at an ICLabel eye probability of .80 and confirmed by visual inspection."),
+        align = c("l","l","l","r","r","l"))
+```
+
+## Participants
+
+The ERP analysis covers the first 20 participants recorded. Participants for whom fewer than 50% of trials were artifact-free at any analysed time-lock were excluded, leaving `r n_l1 + n_l2`: `r n_l1` L1 Spanish speakers and `r n_l2` L2 Spanish learners.
+
+```{r exclusions}
+tibble::tribble(
+  ~Participant, ~Group, ~Reason,
+  "0102", "L1", "All epochs rejected as artifactual; reconstructed FCz had a median peak-to-peak amplitude of 263 µV",
+  "0103", "L1", "All epochs rejected as artifactual",
+  "0201", "L2", "All epochs rejected as artifactual",
+  "0109", "L1", "81.7% of trials rejected at training verb F0 (98 of 120)"
+) |>
+  kable(caption = tabcap("Participants excluded from the ERP analysis."), align = c("l","l","l"))
+```
+
+For the participants entering the analysis, the highest rejection rate at any analysed time-lock was 26.4% (participant 0101); rejection rates for all others were below 8%.
+
+# Method
+
+Epochs were time-locked to noun F0, verb F0 and suffix onset. Mean amplitude was measured over three regions of interest: centrofrontal (F3, FCz, FC1, Cz), left anterior (F7, F3, FC5) and centroparietal (Cz, CP1, CP2, Pz). FCz substitutes for Fz, which is absent from the montage.
+
+```{r windows}
+tibble::tribble(
+  ~Component, ~Window, ~Region,
+  "PrAN", "136 to 280 ms", "Centrofrontal",
+  "LAN",  "225 to 300 ms", "Left anterior",
+  "N400", "300 to 500 ms", "Centroparietal",
+  "P600", "400 to 700 ms", "Left anterior and centroparietal"
+) |>
+  kable(caption = tabcap("Measurement windows and regions."), align = c("l","l","l"))
+```
+
+Amplitudes were averaged within participant and condition before being averaged across participants. Values are reported in µV with the standard error across participants in parentheses. The analyses below are descriptive.
+
+# Summary of Findings
+
+- The noun cue violation produced no consistent effect at verb F0 in any window or region.
+- The verb stress cue produced a PrAN at verb F0 in L2 at post-test only. Neither group showed the effect at pre-test.
+- The verb stress violation produced a left anterior negativity at the suffix in L1 at both sessions, and in L2 at post-test only.
+- In the 400 to 700 ms window at the suffix, the violation effect was negative at left anterior electrodes and positive at centroparietal electrodes.
+
+# Verb F0
+
+## Verb Stress PrAN
+
+```{r pran-verb}
+cm <- cell_means("verb_F0", "centrofrontal", 136, 280, STRESS)
+kable(wide_tbl(cm),
+      caption = tabcap("Verb stress PrAN, 136 to 280 ms, centrofrontal ROI, matched-verb trials only."),
+      align = c("l","l","r","r"))
+kable(diff_tbl(cm, "Paroxytone", "Oxytone"),
+      caption = tabcap("Oxytone minus paroxytone."), align = c("l","l","r"))
+```
+
+In L2, oxytone verbs elicited a larger negativity than paroxytone verbs at post-test. The difference was smaller at pre-test. In L1, oxytone verbs were more negative at pre-test, and paroxytone verbs were more negative at post-test.
+
+```{r fig-pran-verb, fig.cap=figcap("Verb stress PrAN at verb F0, centrofrontal ROI, by group and session.")}
+include_graphics(fig("F0_oxytone_paroxytone_F3_FC1_Cz_FCz.jpg"))
+```
+
+```{r fig-pran-topo, fig.cap=figcap("Scalp distribution, 136 to 280 ms, by stress, group and session.")}
+include_graphics(fig("F0_paroxytone_oxytone_topography_136_280ms.jpg"))
+```
+
+```{r fig-pran-diff, fig.cap=figcap("Oxytone minus paroxytone at pre-test and post-test, and the post-test minus pre-test change, by group.")}
+include_graphics(fig("F0_paroxytone_oxytone_topography_136_280ms_difference_plot.jpg"))
+```
+
+## Noun Violation
+
+```{r noun-viol-lan}
+cm <- cell_means("verb_F0", "left_anterior", 225, 300, NOUNVIOL)
+kable(wide_tbl(cm),
+      caption = tabcap("LAN, 225 to 300 ms, left anterior ROI, noun match against noun mismatch."),
+      align = c("l","l","r","r"))
+```
+
+```{r noun-viol-n400}
+cm <- cell_means("verb_F0", "centroparietal", 300, 500, NOUNVIOL)
+kable(wide_tbl(cm),
+      caption = tabcap("N400, 300 to 500 ms, centroparietal ROI."), align = c("l","l","r","r"))
+```
+
+```{r noun-viol-p600}
+cm <- cell_means("verb_F0", "left_anterior", 400, 700, NOUNVIOL)
+kable(wide_tbl(cm),
+      caption = tabcap("P600, 400 to 700 ms, left anterior ROI."), align = c("l","l","r","r"))
+```
+
+Invalidly cued verbs did not differ consistently from validly cued verbs in any window or region.
+
+```{r fig-noun-la, fig.cap=figcap("Noun violation at verb F0, left anterior ROI.")}
+include_graphics(fig("noun_match_mismatch_F3_F7_FC5.jpg"))
+```
+
+```{r fig-noun-cp, fig.cap=figcap("Noun violation at verb F0, centroparietal ROI.")}
+include_graphics(fig("noun_match_mismatch_CP1_Pz_CP2_Cz.jpg"))
+```
+
+```{r fig-noun-topo1, fig.cap=figcap("Scalp distribution, 225 to 300 ms.")}
+include_graphics(fig("noun_match_mismatch_topography_225_300ms.jpg"))
+```
+
+```{r fig-noun-topo2, fig.cap=figcap("Scalp distribution, 300 to 500 ms.")}
+include_graphics(fig("noun_match_mismatch_topography_300_500ms.jpg"))
+```
+
+```{r fig-noun-topo3, fig.cap=figcap("Scalp distribution, 400 to 700 ms.")}
+include_graphics(fig("noun_match_mismatch_topography_400_700ms.jpg"))
+```
+
+# Suffix
+
+## Verb Violation
+
+```{r verb-viol-lan}
+cm <- cell_means("suffix", "left_anterior", 225, 300, VERBVIOL)
+kable(wide_tbl(cm),
+      caption = tabcap("LAN, 225 to 300 ms, left anterior ROI, verb match against verb mismatch."),
+      align = c("l","l","r","r"))
+kable(diff_tbl(cm, "Match", "Mismatch"),
+      caption = tabcap("Mismatch minus match."), align = c("l","l","r"))
+```
+
+Invalidly cued suffixes elicited a larger negativity than validly cued suffixes in L1 at both sessions. In L2 the difference was absent at pre-test and present at post-test.
+
+```{r verb-viol-n400}
+cm <- cell_means("suffix", "centroparietal", 300, 500, VERBVIOL)
+kable(wide_tbl(cm),
+      caption = tabcap("N400, 300 to 500 ms, centroparietal ROI."), align = c("l","l","r","r"))
+```
+
+```{r verb-viol-p600}
+cm_la <- cell_means("suffix", "left_anterior",  400, 700, VERBVIOL)
+cm_cp <- cell_means("suffix", "centroparietal", 400, 700, VERBVIOL)
+kable(wide_tbl(cm_la),
+      caption = tabcap("P600, 400 to 700 ms, left anterior ROI."), align = c("l","l","r","r"))
+kable(wide_tbl(cm_cp),
+      caption = tabcap("P600, 400 to 700 ms, centroparietal ROI."), align = c("l","l","r","r"))
+```
+
+In the 400 to 700 ms window, invalidly cued suffixes elicited a larger negativity than validly cued suffixes at left anterior electrodes and a larger positivity at centroparietal electrodes.
+
+```{r fig-suffix-la, fig.cap=figcap("Verb violation at the suffix, left anterior ROI.")}
+include_graphics(fig("suffix_match_mismatch_F3_F7_FC5.jpg"))
+```
+
+```{r fig-suffix-cp, fig.cap=figcap("Verb violation at the suffix, centroparietal ROI.")}
+include_graphics(fig("suffix_match_mismatch_CP1_Pz_CP2_Cz.jpg"))
+```
+
+```{r fig-suffix-topo1, fig.cap=figcap("Scalp distribution, 225 to 300 ms.")}
+include_graphics(fig("suffix_match_mismatch_topography_225_300ms.jpg"))
+```
+
+```{r fig-suffix-topo2, fig.cap=figcap("Scalp distribution, 500 to 700 ms.")}
+include_graphics(fig("suffix_match_mismatch_topography_500_700ms.jpg"))
+```
+
+## Condition Means
+
+```{r all-conds}
+bind_rows(
+  cell_means("suffix","centroparietal",300,500,
+             c(a="a",b="b",c="c",d="d",e="e",f="f")) |> mutate(Component = "N400, suffix"),
+  cell_means("suffix","centroparietal",400,700,
+             c(a="a",b="b",c="c",d="d",e="e",f="f")) |> mutate(Component = "P600, suffix, centroparietal")
+) |>
+  mutate(cell = sprintf("%.2f", M)) |>
+  select(Component, Group = group, Session = session, level, cell) |>
+  pivot_wider(names_from = level, values_from = cell) |>
+  kable(caption = tabcap("Mean amplitude by condition. Conditions a and f are verb match; c and e are verb mismatch. Conditions c and f carry a past suffix; a and e carry a present suffix."),
+        align = c("l","l","l","r","r","r","r","r","r"))
+```
+
+Among invalidly cued conditions, condition c was more positive than condition e in every group and session.
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

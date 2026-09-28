@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Kaylee Fernandez" />
+
+<meta name="date" content="2026-09-28" />
+
+<title>SP26 ERP Results</title>
+
+<script src="site_libs/header-attrs-2.30/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/cosmo.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.13.2/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+.tocify-subheader {
+  display: inline;
+}
+.tocify-subheader .tocify-item {
+  font-size: 0.95em;
+}
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">SP26</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="behavioral.html">Behavioural</a>
+</li>
+<li>
+  <a href="erp_results.html">ERP</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">SP26 ERP Results</h1>
+<h4 class="author">Kaylee Fernandez</h4>
+<h4 class="date">2026-09-28</h4>
+
+</div>
+
+
+<style type="text/css">
+caption, .figure p.caption, p.caption {
+  font-size: 88%;
+  color: #444;
+  text-align: left;
+  padding-top: 0.4em;
+  padding-bottom: 0.6em;
+  border-left: 3px solid #ddd;
+  padding-left: 0.7em;
+  margin-top: 0.3em;
+}
+</style>
+<div id="preprocessing" class="section level1">
+<h1>Preprocessing</h1>
+<p>Filter settings, ocular correction by independent component analysis
+and the artifact rejection criterion follow the Lund protocol as
+described in Söderström, Horne and Roll (2016) and Hed, Schremm, Horne
+and Roll (2019).</p>
+<ul>
+<li>Continuous data were imported from BrainVision format, channels 1 to
+31.</li>
+<li>Trigger latencies were corrected trial by trial against the recorded
+audio channel. The measured latency averaged 116.1 ms (<em>SD</em> =
+3.4). Practice trials were relabelled and excluded.</li>
+<li>Data were resampled to 500 Hz.</li>
+<li>Data were re-referenced to linked mastoids (TP9, TP10), restoring
+FCz and leaving 30 channels.</li>
+<li>Data were band-pass filtered from 0.05 to 30 Hz.</li>
+<li>Independent component analysis was computed on sentence-locked
+epochs and the resulting weights applied to the continuous data.
+Components were classified with ICLabel, and ocular components were
+identified by visual inspection and removed.</li>
+<li>Epochs were extracted from −200 to 1000 ms around each target
+event.</li>
+<li>Each epoch was baseline-corrected using the 200 ms before its own
+event.</li>
+<li>Epochs whose peak-to-peak amplitude exceeded 200 µV in any channel
+were rejected as artifactual.</li>
+</ul>
+<table>
+<caption>Table 1. Independent components removed, by participant.
+Components were flagged at an ICLabel eye probability of .80 and
+confirmed by visual inspection.</caption>
+<colgroup>
+<col width="10%" />
+<col width="5%" />
+<col width="17%" />
+<col width="2%" />
+<col width="15%" />
+<col width="48%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Participant</th>
+<th align="left">Group</th>
+<th align="left">Components removed</th>
+<th align="right">n</th>
+<th align="right">Variance removed</th>
+<th align="left">ICLabel eye probability</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">0101</td>
+<td align="left">L1</td>
+<td align="left">IC1,IC3</td>
+<td align="right">2</td>
+<td align="right">62.9%</td>
+<td align="left">IC1 (90%), IC3 (96%)</td>
+</tr>
+<tr class="even">
+<td align="left">0104</td>
+<td align="left">L1</td>
+<td align="left">IC1,IC6</td>
+<td align="right">2</td>
+<td align="right">44.3%</td>
+<td align="left">IC1 (94%), IC6 (96%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0105</td>
+<td align="left">L1</td>
+<td align="left">IC2,IC3,IC4</td>
+<td align="right">3</td>
+<td align="right">24.7%</td>
+<td align="left">IC2 (98%), IC3 (87%), IC4 (88%)</td>
+</tr>
+<tr class="even">
+<td align="left">0106</td>
+<td align="left">L1</td>
+<td align="left">IC1,IC2,IC3,IC5,IC7</td>
+<td align="right">5</td>
+<td align="right">86.4%</td>
+<td align="left">IC1 (96%), IC2 (97%), IC3 (93%), IC5 (87%), IC7
+(89%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0107</td>
+<td align="left">L1</td>
+<td align="left">IC1</td>
+<td align="right">1</td>
+<td align="right">40.8%</td>
+<td align="left">IC1 (96%)</td>
+</tr>
+<tr class="even">
+<td align="left">0108</td>
+<td align="left">L1</td>
+<td align="left">IC3</td>
+<td align="right">1</td>
+<td align="right">22.6%</td>
+<td align="left">IC3 (96%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0110</td>
+<td align="left">L1</td>
+<td align="left">IC1</td>
+<td align="right">1</td>
+<td align="right">5.3%</td>
+<td align="left">IC1 (91%)</td>
+</tr>
+<tr class="even">
+<td align="left">0111</td>
+<td align="left">L1</td>
+<td align="left">IC1</td>
+<td align="right">1</td>
+<td align="right">52.3%</td>
+<td align="left">IC1 (95%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0202</td>
+<td align="left">L2</td>
+<td align="left">IC1,IC2,IC3,IC4,IC7</td>
+<td align="right">5</td>
+<td align="right">95.0%</td>
+<td align="left">IC1 (86%), IC2 (93%), IC3 (96%), IC4 (83%), IC7
+(89%)</td>
+</tr>
+<tr class="even">
+<td align="left">0203</td>
+<td align="left">L2</td>
+<td align="left">IC11</td>
+<td align="right">1</td>
+<td align="right">0.5%</td>
+<td align="left">IC11 (94%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0204</td>
+<td align="left">L2</td>
+<td align="left">IC1,IC2</td>
+<td align="right">2</td>
+<td align="right">83.5%</td>
+<td align="left">IC1 (99%), IC2 (99%)</td>
+</tr>
+<tr class="even">
+<td align="left">0205</td>
+<td align="left">L2</td>
+<td align="left">IC1</td>
+<td align="right">1</td>
+<td align="right">57.8%</td>
+<td align="left">IC1 (96%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0206</td>
+<td align="left">L2</td>
+<td align="left">IC1,IC3,IC4,IC5</td>
+<td align="right">4</td>
+<td align="right">58.4%</td>
+<td align="left">IC1 (85%), IC3 (99%), IC4 (83%), IC5 (87%)</td>
+</tr>
+<tr class="even">
+<td align="left">0207</td>
+<td align="left">L2</td>
+<td align="left">IC3,IC5</td>
+<td align="right">2</td>
+<td align="right">17.7%</td>
+<td align="left">IC3 (97%), IC5 (92%)</td>
+</tr>
+<tr class="odd">
+<td align="left">0208</td>
+<td align="left">L2</td>
+<td align="left">IC3,IC7,IC9</td>
+<td align="right">3</td>
+<td align="right">18.2%</td>
+<td align="left">IC3 (95%), IC7 (98%), IC9 (83%)</td>
+</tr>
+<tr class="even">
+<td align="left">0209</td>
+<td align="left">L2</td>
+<td align="left">IC1,IC2</td>
+<td align="right">2</td>
+<td align="right">31.2%</td>
+<td align="left">IC1 (98%), IC2 (99%)</td>
+</tr>
+</tbody>
+</table>
+<div id="participants" class="section level2">
+<h2>Participants</h2>
+<p>The ERP analysis covers the first 20 participants recorded.
+Participants for whom fewer than 50% of trials were artifact-free at any
+analysed time-lock were excluded, leaving 16: 8 L1 Spanish speakers and
+8 L2 Spanish learners.</p>
+<table>
+<caption>Table 2. Participants excluded from the ERP analysis.</caption>
+<colgroup>
+<col width="10%" />
+<col width="5%" />
+<col width="84%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Participant</th>
+<th align="left">Group</th>
+<th align="left">Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">0102</td>
+<td align="left">L1</td>
+<td align="left">All epochs rejected as artifactual; reconstructed FCz
+had a median peak-to-peak amplitude of 263 µV</td>
+</tr>
+<tr class="even">
+<td align="left">0103</td>
+<td align="left">L1</td>
+<td align="left">All epochs rejected as artifactual</td>
+</tr>
+<tr class="odd">
+<td align="left">0201</td>
+<td align="left">L2</td>
+<td align="left">All epochs rejected as artifactual</td>
+</tr>
+<tr class="even">
+<td align="left">0109</td>
+<td align="left">L1</td>
+<td align="left">81.7% of trials rejected at training verb F0 (98 of
+120)</td>
+</tr>
+</tbody>
+</table>
+<p>For the participants entering the analysis, the highest rejection
+rate at any analysed time-lock was 26.4% (participant 0101); rejection
+rates for all others were below 8%.</p>
+</div>
+</div>
+<div id="method" class="section level1">
+<h1>Method</h1>
+<p>Epochs were time-locked to noun F0, verb F0 and suffix onset. Mean
+amplitude was measured over three regions of interest: centrofrontal
+(F3, FCz, FC1, Cz), left anterior (F7, F3, FC5) and centroparietal (Cz,
+CP1, CP2, Pz). FCz substitutes for Fz, which is absent from the
+montage.</p>
+<table>
+<caption>Table 3. Measurement windows and regions.</caption>
+<thead>
+<tr class="header">
+<th align="left">Component</th>
+<th align="left">Window</th>
+<th align="left">Region</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">PrAN</td>
+<td align="left">136 to 280 ms</td>
+<td align="left">Centrofrontal</td>
+</tr>
+<tr class="even">
+<td align="left">LAN</td>
+<td align="left">225 to 300 ms</td>
+<td align="left">Left anterior</td>
+</tr>
+<tr class="odd">
+<td align="left">N400</td>
+<td align="left">300 to 500 ms</td>
+<td align="left">Centroparietal</td>
+</tr>
+<tr class="even">
+<td align="left">P600</td>
+<td align="left">400 to 700 ms</td>
+<td align="left">Left anterior and centroparietal</td>
+</tr>
+</tbody>
+</table>
+<p>Amplitudes were averaged within participant and condition before
+being averaged across participants. Values are reported in µV with the
+standard error across participants in parentheses. The analyses below
+are descriptive.</p>
+</div>
+<div id="summary-of-findings" class="section level1">
+<h1>Summary of Findings</h1>
+<ul>
+<li>The noun cue violation produced no consistent effect at verb F0 in
+any window or region.</li>
+<li>The verb stress cue produced a PrAN at verb F0 in L2 at post-test
+only. Neither group showed the effect at pre-test.</li>
+<li>The verb stress violation produced a left anterior negativity at the
+suffix in L1 at both sessions, and in L2 at post-test only.</li>
+<li>In the 400 to 700 ms window at the suffix, the violation effect was
+negative at left anterior electrodes and positive at centroparietal
+electrodes.</li>
+</ul>
+</div>
+<div id="verb-f0" class="section level1">
+<h1>Verb F0</h1>
+<div id="verb-stress-pran" class="section level2">
+<h2>Verb Stress PrAN</h2>
+<table>
+<caption>Table 4. Verb stress PrAN, 136 to 280 ms, centrofrontal ROI,
+matched-verb trials only.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Paroxytone</th>
+<th align="right">Oxytone</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">-0.15 (0.25)</td>
+<td align="right">-0.59 (0.33)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">-0.62 (0.33)</td>
+<td align="right">-0.20 (0.22)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.55 (0.31)</td>
+<td align="right">-0.90 (0.36)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.21 (0.39)</td>
+<td align="right">-1.52 (0.48)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 5. Oxytone minus paroxytone.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">-0.44</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.42</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.35</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-1.32</td>
+</tr>
+</tbody>
+</table>
+<p>In L2, oxytone verbs elicited a larger negativity than paroxytone
+verbs at post-test. The difference was smaller at pre-test. In L1,
+oxytone verbs were more negative at pre-test, and paroxytone verbs were
+more negative at post-test.</p>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/F0_oxytone_paroxytone_F3_FC1_Cz_FCz.jpg" alt="Figure 1. Verb stress PrAN at verb F0, centrofrontal ROI, by group and session."  />
+<p class="caption">
+Figure 1. Verb stress PrAN at verb F0, centrofrontal ROI, by group and
+session.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/F0_paroxytone_oxytone_topography_136_280ms.jpg" alt="Figure 2. Scalp distribution, 136 to 280 ms, by stress, group and session."  />
+<p class="caption">
+Figure 2. Scalp distribution, 136 to 280 ms, by stress, group and
+session.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/F0_paroxytone_oxytone_topography_136_280ms_difference_plot.jpg" alt="Figure 3. Oxytone minus paroxytone at pre-test and post-test, and the post-test minus pre-test change, by group."  />
+<p class="caption">
+Figure 3. Oxytone minus paroxytone at pre-test and post-test, and the
+post-test minus pre-test change, by group.
+</p>
+</div>
+</div>
+<div id="noun-violation" class="section level2">
+<h2>Noun Violation</h2>
+<table>
+<caption>Table 6. LAN, 225 to 300 ms, left anterior ROI, noun match
+against noun mismatch.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">-0.01 (0.25)</td>
+<td align="right">0.50 (0.38)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">-0.03 (0.27)</td>
+<td align="right">-0.40 (0.39)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.03 (0.30)</td>
+<td align="right">-0.63 (0.25)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.44 (0.43)</td>
+<td align="right">-0.17 (0.43)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 7. N400, 300 to 500 ms, centroparietal ROI.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">-0.05 (0.43)</td>
+<td align="right">-0.11 (0.53)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">-0.01 (0.47)</td>
+<td align="right">0.19 (0.71)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">0.30 (0.28)</td>
+<td align="right">0.36 (0.89)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.43 (0.68)</td>
+<td align="right">-0.30 (0.77)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 8. P600, 400 to 700 ms, left anterior ROI.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.74 (0.68)</td>
+<td align="right">0.85 (0.91)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.85 (0.48)</td>
+<td align="right">0.60 (0.45)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.42 (0.41)</td>
+<td align="right">-0.40 (0.41)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.10 (0.39)</td>
+<td align="right">-0.07 (0.64)</td>
+</tr>
+</tbody>
+</table>
+<p>Invalidly cued verbs did not differ consistently from validly cued
+verbs in any window or region.</p>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/noun_match_mismatch_F3_F7_FC5.jpg" alt="Figure 4. Noun violation at verb F0, left anterior ROI."  />
+<p class="caption">
+Figure 4. Noun violation at verb F0, left anterior ROI.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/noun_match_mismatch_CP1_Pz_CP2_Cz.jpg" alt="Figure 5. Noun violation at verb F0, centroparietal ROI."  />
+<p class="caption">
+Figure 5. Noun violation at verb F0, centroparietal ROI.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/noun_match_mismatch_topography_225_300ms.jpg" alt="Figure 6. Scalp distribution, 225 to 300 ms."  />
+<p class="caption">
+Figure 6. Scalp distribution, 225 to 300 ms.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/noun_match_mismatch_topography_300_500ms.jpg" alt="Figure 7. Scalp distribution, 300 to 500 ms."  />
+<p class="caption">
+Figure 7. Scalp distribution, 300 to 500 ms.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/noun_match_mismatch_topography_400_700ms.jpg" alt="Figure 8. Scalp distribution, 400 to 700 ms."  />
+<p class="caption">
+Figure 8. Scalp distribution, 400 to 700 ms.
+</p>
+</div>
+</div>
+</div>
+<div id="suffix" class="section level1">
+<h1>Suffix</h1>
+<div id="verb-violation" class="section level2">
+<h2>Verb Violation</h2>
+<table>
+<caption>Table 9. LAN, 225 to 300 ms, left anterior ROI, verb match
+against verb mismatch.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.23 (0.44)</td>
+<td align="right">-0.47 (0.41)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.62 (0.31)</td>
+<td align="right">-0.55 (0.35)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.53 (0.40)</td>
+<td align="right">-0.28 (0.53)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.19 (0.24)</td>
+<td align="right">-0.79 (0.62)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 10. Mismatch minus match.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">-0.70</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">-1.17</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">0.25</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.60</td>
+</tr>
+</tbody>
+</table>
+<p>Invalidly cued suffixes elicited a larger negativity than validly
+cued suffixes in L1 at both sessions. In L2 the difference was absent at
+pre-test and present at post-test.</p>
+<table>
+<caption>Table 11. N400, 300 to 500 ms, centroparietal ROI.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.85 (0.89)</td>
+<td align="right">0.88 (0.91)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">1.24 (0.80)</td>
+<td align="right">1.59 (1.07)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">1.64 (0.77)</td>
+<td align="right">1.49 (0.88)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">1.05 (0.93)</td>
+<td align="right">1.14 (0.97)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 12. P600, 400 to 700 ms, left anterior ROI.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.69 (0.86)</td>
+<td align="right">-0.06 (0.65)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">1.36 (0.79)</td>
+<td align="right">0.40 (0.77)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">-0.57 (0.33)</td>
+<td align="right">-0.08 (0.43)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">-0.12 (0.38)</td>
+<td align="right">-0.47 (0.62)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Table 13. P600, 400 to 700 ms, centroparietal ROI.</caption>
+<thead>
+<tr class="header">
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">Match</th>
+<th align="right">Mismatch</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.40 (1.11)</td>
+<td align="right">0.96 (1.05)</td>
+</tr>
+<tr class="even">
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.91 (0.75)</td>
+<td align="right">1.82 (1.31)</td>
+</tr>
+<tr class="odd">
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">1.25 (0.88)</td>
+<td align="right">1.65 (1.00)</td>
+</tr>
+<tr class="even">
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">0.88 (0.92)</td>
+<td align="right">1.20 (1.02)</td>
+</tr>
+</tbody>
+</table>
+<p>In the 400 to 700 ms window, invalidly cued suffixes elicited a
+larger negativity than validly cued suffixes at left anterior electrodes
+and a larger positivity at centroparietal electrodes.</p>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/suffix_match_mismatch_F3_F7_FC5.jpg" alt="Figure 9. Verb violation at the suffix, left anterior ROI."  />
+<p class="caption">
+Figure 9. Verb violation at the suffix, left anterior ROI.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/suffix_match_mismatch_CP1_Pz_CP2_Cz.jpg" alt="Figure 10. Verb violation at the suffix, centroparietal ROI."  />
+<p class="caption">
+Figure 10. Verb violation at the suffix, centroparietal ROI.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/suffix_match_mismatch_topography_225_300ms.jpg" alt="Figure 11. Scalp distribution, 225 to 300 ms."  />
+<p class="caption">
+Figure 11. Scalp distribution, 225 to 300 ms.
+</p>
+</div>
+<div class="figure" style="text-align: center">
+<img src="figures/erp/suffix_match_mismatch_topography_500_700ms.jpg" alt="Figure 12. Scalp distribution, 500 to 700 ms."  />
+<p class="caption">
+Figure 12. Scalp distribution, 500 to 700 ms.
+</p>
+</div>
+</div>
+<div id="condition-means" class="section level2">
+<h2>Condition Means</h2>
+<table style="width:100%;">
+<caption>Table 14. Mean amplitude by condition. Conditions a and f are
+verb match; c and e are verb mismatch. Conditions c and f carry a past
+suffix; a and e carry a present suffix.</caption>
+<colgroup>
+<col width="38%" />
+<col width="8%" />
+<col width="10%" />
+<col width="6%" />
+<col width="6%" />
+<col width="6%" />
+<col width="8%" />
+<col width="8%" />
+<col width="6%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Component</th>
+<th align="left">Group</th>
+<th align="left">Session</th>
+<th align="right">a</th>
+<th align="right">b</th>
+<th align="right">c</th>
+<th align="right">d</th>
+<th align="right">e</th>
+<th align="right">f</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">N400, suffix</td>
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.53</td>
+<td align="right">1.40</td>
+<td align="right">1.75</td>
+<td align="right">0.58</td>
+<td align="right">0.01</td>
+<td align="right">1.17</td>
+</tr>
+<tr class="even">
+<td align="left">N400, suffix</td>
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.46</td>
+<td align="right">2.20</td>
+<td align="right">2.91</td>
+<td align="right">0.74</td>
+<td align="right">0.28</td>
+<td align="right">2.01</td>
+</tr>
+<tr class="odd">
+<td align="left">N400, suffix</td>
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">1.44</td>
+<td align="right">1.43</td>
+<td align="right">1.91</td>
+<td align="right">1.68</td>
+<td align="right">1.08</td>
+<td align="right">1.85</td>
+</tr>
+<tr class="even">
+<td align="left">N400, suffix</td>
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">1.11</td>
+<td align="right">1.32</td>
+<td align="right">2.02</td>
+<td align="right">0.10</td>
+<td align="right">0.25</td>
+<td align="right">0.98</td>
+</tr>
+<tr class="odd">
+<td align="left">P600, suffix, centroparietal</td>
+<td align="left">L1</td>
+<td align="left">Pre</td>
+<td align="right">0.34</td>
+<td align="right">0.64</td>
+<td align="right">1.57</td>
+<td align="right">-0.13</td>
+<td align="right">0.35</td>
+<td align="right">0.45</td>
+</tr>
+<tr class="even">
+<td align="left">P600, suffix, centroparietal</td>
+<td align="left">L1</td>
+<td align="left">Post</td>
+<td align="right">0.50</td>
+<td align="right">1.59</td>
+<td align="right">2.90</td>
+<td align="right">0.97</td>
+<td align="right">0.74</td>
+<td align="right">1.32</td>
+</tr>
+<tr class="odd">
+<td align="left">P600, suffix, centroparietal</td>
+<td align="left">L2</td>
+<td align="left">Pre</td>
+<td align="right">0.75</td>
+<td align="right">1.32</td>
+<td align="right">2.33</td>
+<td align="right">0.97</td>
+<td align="right">0.97</td>
+<td align="right">1.75</td>
+</tr>
+<tr class="even">
+<td align="left">P600, suffix, centroparietal</td>
+<td align="left">L2</td>
+<td align="left">Post</td>
+<td align="right">0.80</td>
+<td align="right">0.93</td>
+<td align="right">2.46</td>
+<td align="right">-0.29</td>
+<td align="right">-0.06</td>
+<td align="right">0.95</td>
+</tr>
+</tbody>
+</table>
+<p>Among invalidly cued conditions, condition c was more positive than
+condition e in every group and session.</p>
+</div>
+</div>
+<div id="session-info" class="section level1">
+<h1>Session Info</h1>
+<pre><code>## R version 4.4.2 (2024-10-31)
+## Platform: aarch64-apple-darwin20
+## Running under: macOS Sequoia 15.7.7
+## 
+## Matrix products: default
+## BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
+## LAPACK: /Library/Frameworks/R.framework/Versions/4.4-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.0
+## 
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+## 
+## time zone: America/New_York
+## tzcode source: internal
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+##  [1] mgcv_1.9-4       nlme_3.1-167     knitr_1.51       patchwork_1.3.2  openxlsx_4.2.8.1 fs_1.6.7         emmeans_2.0.2   
+##  [8] lubridate_1.9.4  forcats_1.0.0    stringr_1.6.0    dplyr_1.1.4      purrr_1.2.1      readr_2.1.6      tidyr_1.3.1     
+## [15] tibble_3.2.1     ggplot2_4.0.1    tidyverse_2.0.0  lmerTest_3.2-0   lme4_1.1-38      Matrix_1.7-2    
+## 
+## loaded via a namespace (and not attached):
+##  [1] tidyselect_1.2.1    farver_2.1.2        S7_0.2.1            fastmap_1.2.0       digest_0.6.37      
+##  [6] estimability_1.5.1  timechange_0.3.0    lifecycle_1.0.4     magrittr_2.0.3      compiler_4.4.2     
+## [11] rlang_1.1.6         sass_0.4.10         tools_4.4.2         utf8_1.2.5          yaml_2.3.10        
+## [16] labeling_0.4.3      bit_4.5.0.1         RColorBrewer_1.1-3  rsconnect_1.3.4     withr_3.0.2        
+## [21] numDeriv_2016.8-1.1 grid_4.4.2          xtable_1.8-4        scales_1.4.0        MASS_7.3-64        
+## [26] insight_1.4.4       cli_3.6.5           mvtnorm_1.3-3       rmarkdown_2.30      crayon_1.5.3       
+## [31] ragg_1.3.3          reformulas_0.4.0    generics_0.1.4      rstudioapi_0.17.1   tzdb_0.4.0         
+## [36] minqa_1.2.8         cachem_1.1.0        splines_4.4.2       vctrs_0.6.5         boot_1.3-31        
+## [41] jsonlite_2.0.0      hms_1.1.3           bit64_4.6.0-1       systemfonts_1.2.1   jquerylib_0.1.4    
+## [46] glue_1.8.0          nloptr_2.1.1        stringi_1.8.7       gtable_0.3.6        ggeffects_2.1.0    
+## [51] pillar_1.10.2       htmltools_0.5.8.1   R6_2.6.1            textshaping_1.0.0   Rdpack_2.6.2       
+## [56] vroom_1.6.5         evaluate_1.0.3      lattice_0.22-6      rbibutils_2.3       png_0.1-8          
+## [61] bslib_0.9.0         Rcpp_1.0.14         zip_2.3.2           coda_0.19-4.1       xfun_0.52          
+## [66] pkgconfig_2.0.3</code></pre>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = false;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
