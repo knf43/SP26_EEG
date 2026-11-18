@@ -12,6 +12,7 @@ GRID_STEP  <- 0.01
 TITLES <- c(
   PrAN_noun = "noun cue: oxytone minus paroxytone, 136 to 280 ms",
   PrAN_verb = "verb stress: oxytone minus paroxytone, 136 to 280 ms",
+  PrAN_verb_left = "verb stress: oxytone minus paroxytone, 136 to 280 ms",
   LAN_noun  = "noun mismatch minus match, 225 to 300 ms",
   N400_noun = "noun mismatch minus match, 300 to 500 ms",
   P600_noun = "noun mismatch minus match, 400 to 700 ms",
@@ -24,6 +25,7 @@ LEFT_ANTERIOR  <- c("F7", "F3", "FC5")
 CENTROPARIETAL <- c("Cz", "CP1", "CP2", "Pz")
 
 ROIS <- list(PrAN_noun = CENTROFRONTAL,  PrAN_verb = CENTROFRONTAL,
+             PrAN_verb_left = LEFT_ANTERIOR,
              LAN_noun  = LEFT_ANTERIOR,  N400_noun = CENTROPARIETAL,
              P600_noun = CENTROPARIETAL, LAN_verb  = LEFT_ANTERIOR,
              N400_verb = CENTROPARIETAL, P600_verb = CENTROPARIETAL)
