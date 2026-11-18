@@ -284,6 +284,8 @@ write_csv(training_descriptives, path(OUTPUT_DIR, "behavioral_descriptives_train
 write_csv(fixed_all,             path(OUTPUT_DIR, "behavioral_fixed_effects.csv"))
 write_csv(followup_all,          path(OUTPUT_DIR, "behavioral_followup.csv"))
 write_csv(means_all,             path(OUTPUT_DIR, "behavioral_estimated_means.csv"))
+write_csv(select(long, participant, group, phase, trial, sound, correct, rt),
+          path(OUTPUT_DIR, "behavioral_trials.csv"))
 
 # plots
 FIGURES <- list(

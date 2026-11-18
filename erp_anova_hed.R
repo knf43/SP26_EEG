@@ -4,10 +4,12 @@
 library(tidyverse)
 library(fs)
 library(afex)
+library(lmerTest)
 library(emmeans)
 
 # configuration
 OUTPUT_DIR <- "~/Desktop/SP26_data/erp_output"
+TRIALS_FILE <- "~/Desktop/SP26_data/behavioral_output/initial/behavioral_trials.csv"
 ANOVA_DIR  <- path(OUTPUT_DIR, "anova")
 BLOCK_SIZE <- 30
 
@@ -49,6 +51,12 @@ MODELS <- list(
   PrAN_noun = list(conditions = ALL_CONDITIONS,
                    within = c("phase", "splice"),
                    effect = "splice"),
+  PrAN_noun_early = list(conditions = ALL_CONDITIONS,
+                         within = c("phase", "splice"),
+                         effect = "splice"),
+  PrAN_noun_early_left = list(conditions = ALL_CONDITIONS,
+                              within = c("phase", "splice"),
+                              effect = "splice"),
   PrAN_verb = list(conditions = NOUN_CONDITIONS,
                    within = c("phase", "verb_stress", "noun_match"),
                    effect = "verb_stress"),
@@ -175,6 +183,95 @@ stress_by_noun <- map_dfr(c("PrAN_verb", "PrAN_verb_left"), \(name) {
               t = round(t.ratio, 2), p = round(p.value, 4))
 })
 
+# verb stress by noun cue, all six conditions
+CUE_COMPONENTS <- c("PrAN_verb", "PrAN_verb_left")
+
+cue_means <- map(set_names(CUE_COMPONENTS), \(name) {
+  prepost |>
+    filter(component == name) |>
+    cell_means(c("phase", "splice", "verb_stress"))
+})
+
+cue_fits <- map(cue_means, \(means) {
+  fit_anova(means, c("phase", "splice", "verb_stress"))
+})
+
+cue_anova <- imap(cue_fits, \(fit, name) anova_table(fit, name)) |>
+  bind_rows()
+
+stress_by_cue <- imap(cue_fits, \(fit, name) {
+  emmeans(fit, ~ verb_stress | group * phase * splice,
+          model = "multivariate") |>
+    pairs(reverse = TRUE) |>
+    summary(by = NULL, adjust = "fdr") |>
+    as_tibble() |>
+    transmute(model = name, group, time = as.character(phase),
+              noun_cue = if_else(splice == "a", "paroxytone", "oxytone"),
+              estimate = round(estimate, 2), se = round(SE, 2),
+              t = round(t.ratio, 2), p = round(p.value, 4))
+}) |>
+  bind_rows()
+
+cue_means_all <- bind_rows(cue_means, .id = "model")
+
+# pre against post for each stress pattern
+phase_by_stress <- map_dfr(c("PrAN_verb", "PrAN_verb_left"), \(name) {
+  emmeans(prepost_fits[[name]], ~ phase | group * verb_stress,
+          model = "multivariate") |>
+    pairs(reverse = TRUE) |>
+    summary(by = NULL, adjust = "fdr") |>
+    as_tibble() |>
+    transmute(model = name, group, verb_stress,
+              estimate = round(estimate, 2), se = round(SE, 2),
+              t = round(t.ratio, 2), p = round(p.value, 4))
+})
+
+# late amplitude and reaction time in training
+late <- dat |>
+  filter(erp_phase == "training", component == "late_verb") |>
+  inner_join(read_csv(TRIALS_FILE, show_col_types = FALSE) |>
+               filter(phase == "training", !is.na(rt)) |>
+               select(participant, sound, rt),
+             by = c("participant", "sound")) |>
+  mutate(log_rt        = log10(rt) - mean(log10(rt)),
+         group_c       = if_else(group == "L2", 0.5, -0.5),
+         verb_stress_c = if_else(verb_stress == "oxytone", 0.5, -0.5))
+
+late_means <- cell_means(late, "verb_stress")
+late_fit   <- fit_anova(late_means, "verb_stress")
+late_anova <- anova_table(late_fit, "late_training")
+
+late_followup <- emmeans(late_fit, ~ verb_stress | group, model = "multivariate") |>
+  pairs(reverse = TRUE) |>
+  summary(by = NULL, adjust = "fdr") |>
+  as_tibble() |>
+  transmute(model = "late_training", group,
+            estimate = round(estimate, 2), se = round(SE, 2),
+            t = round(t.ratio, 2), p = round(p.value, 4))
+
+late_rt_model <- lmer(amplitude ~ group_c * verb_stress_c * log_rt +
+                        (1 | participant) + (1 | item),
+                      data = late)
+
+late_rt_effects <- as.data.frame(coef(summary(late_rt_model))) |>
+  rownames_to_column("term") |>
+  transmute(term, estimate = round(Estimate, 3), se = round(`Std. Error`, 3),
+            df = round(df, 1), t = round(`t value`, 2), p = round(`Pr(>|t|)`, 4))
+
+late_rt_group <- emtrends(late_rt_model, ~ group_c, var = "log_rt",
+                          at = list(group_c = c(-0.5, 0.5)),
+                          lmer.df = "asymptotic") |>
+  summary(infer = TRUE) |>
+  as_tibble() |>
+  transmute(group = if_else(group_c < 0, "L1", "L2"),
+            estimate = round(log_rt.trend, 2), se = round(SE, 2),
+            z = round(z.ratio, 2), p = round(p.value, 4))
+
+late_rt_means <- late |>
+  group_by(participant, group, verb_stress) |>
+  summarise(rt = mean(rt), amplitude = mean(amplitude), trials = n(),
+            .groups = "drop")
+
 # results
 anova_all    <- bind_rows(prepost_anova) |> bind_rows(training_anova)
 followup_all <- bind_rows(prepost_followup) |> bind_rows(training_followup)
@@ -193,6 +290,21 @@ print(followup_all, n = Inf)
 cat("\nverb stress by noun match, fdr corrected\n")
 print(stress_by_noun, n = Inf)
 
+cat("\nverb stress by noun cue, all six conditions, anova\n")
+print(cue_anova, row.names = FALSE)
+
+cat("\nverb stress by noun cue, all six conditions, fdr corrected\n")
+print(stress_by_cue, n = Inf)
+
+cat("\npost minus pre for each stress pattern, fdr corrected\n")
+print(phase_by_stress, n = Inf)
+
+cat("\nlate amplitude in training, 600 to 800 ms\n")
+print(late_anova, row.names = FALSE)
+print(late_followup)
+print(late_rt_effects, row.names = FALSE)
+print(late_rt_group, n = Inf)
+
 cat("\neffects at p < .05\n")
 print(filter(anova_all, p < .05), row.names = FALSE)
 
@@ -202,3 +314,12 @@ write_csv(anova_all,    path(ANOVA_DIR, "anova_table.csv"))
 write_csv(followup_all, path(ANOVA_DIR, "anova_followup.csv"))
 write_csv(means_all,    path(ANOVA_DIR, "anova_cell_means.csv"))
 write_csv(stress_by_noun, path(ANOVA_DIR, "anova_stress_by_noun_match.csv"))
+write_csv(cue_anova,      path(ANOVA_DIR, "anova_noun_cue_table.csv"))
+write_csv(stress_by_cue,  path(ANOVA_DIR, "anova_stress_by_noun_cue.csv"))
+write_csv(cue_means_all,  path(ANOVA_DIR, "anova_noun_cue_cell_means.csv"))
+write_csv(phase_by_stress, path(ANOVA_DIR, "anova_phase_by_stress.csv"))
+write_csv(late_anova,      path(ANOVA_DIR, "late_training_anova.csv"))
+write_csv(late_followup,   path(ANOVA_DIR, "late_training_followup.csv"))
+write_csv(late_rt_effects, path(ANOVA_DIR, "late_training_rt_model.csv"))
+write_csv(late_rt_group,   path(ANOVA_DIR, "late_training_rt_by_group.csv"))
+write_csv(late_rt_means,   path(ANOVA_DIR, "late_training_means.csv"))

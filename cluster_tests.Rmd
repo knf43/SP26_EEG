@@ -1,0 +1,143 @@
+---
+title: "Cluster-Based Permutation Tests"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = "center", out.width = "100%")
+
+# libraries
+library(tidyverse)
+library(knitr)
+
+# configuration
+EXPORT_DIR <- "~/Kaylee_SP26"
+FIGURE_DIR <- "figures"
+
+# data
+clusters <- read_csv(file.path(EXPORT_DIR, "sp26_cluster_tests.csv"),
+                     show_col_types = FALSE) |>
+  mutate(description = fct_inorder(description))
+
+settings <- read_csv(file.path(EXPORT_DIR, "sp26_cluster_settings.csv"),
+                     show_col_types = FALSE)
+
+FAMILIES <- c("planned", "group and phase", "additional")
+
+significant <- filter(clusters, significant == 1)
+corrected   <- filter(clusters, significant_corrected == 1)
+uncorrected <- filter(clusters, significant == 1, significant_corrected == 0)
+tests       <- distinct(clusters, family, description, comparison, first, second)
+family_n    <- map_int(set_names(FAMILIES), \(name) sum(tests$family == name))
+
+# helper functions
+minus <- function(x) str_replace_all(x, "-", "−")
+
+p_value <- function(p) {
+  if_else(p < .001, "*p* < .001",
+          paste("*p* =", str_remove(sprintf("%.3f", p), "^0")))
+}
+
+capitalise <- function(x) paste0(toupper(str_sub(x, 1, 1)), str_sub(x, 2))
+
+sentence <- function(row) {
+  sprintf(paste0("**%s.** %s was %s than %s from %d to %d ms at %d electrodes ",
+                 "(largest at %s at %d ms; mean difference %s µV; cluster %s)."),
+          capitalise(row$comparison), capitalise(row$first), row$direction,
+          row$second, round(row$start_ms), round(row$end_ms), row$n_channels,
+          row$peak_channel, round(row$peak_ms),
+          minus(sprintf("%.2f", row$mean_difference)),
+          paste0(p_value(row$p), ", corrected ", p_value(row$p_corrected)))
+}
+
+summary_list <- function(rows) {
+  if (nrow(rows) == 0) {
+    cat("\n- None.\n")
+  }
+  for (name in levels(droplevels(rows$description))) {
+    cat("\n**", name, "**\n\n", sep = "")
+    found <- filter(rows, description == name)
+    for (i in seq_len(nrow(found))) {
+      cat("- ", str_remove_all(sentence(found[i, ]), "\\*\\*"), "\n", sep = "")
+    }
+  }
+}
+
+smallest <- function(rows) {
+  rows |>
+    group_by(comparison, first, second) |>
+    slice_min(p, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    transmute(Comparison = capitalise(comparison),
+              Tested = paste(first, "against", second),
+              Family = family,
+              `Smallest cluster p` = case_when(is.na(p) ~ "no cluster",
+                                               p < .001 ~ "< .001",
+                                               TRUE ~ str_remove(sprintf("%.3f", p), "^0")),
+              `Corrected p` = if_else(is.na(p), "",
+                                      str_remove(sprintf("%.3f", p_corrected), "^0")),
+              `Direction of that cluster` = if_else(is.na(p), "",
+                                                    paste(first, direction)))
+}
+```
+
+# Method
+
+- The tests on this page are exploratory. The planned analyses of the time windows and regions of interest (ROIs) are on the Results page.
+- A cluster-based permutation test compares two conditions at every electrode and every time point, and it does not require a time window or a region to be chosen in advance.
+- Each test included all `r settings$electrodes` electrodes and every time point from `r settings$start_ms` to `r settings$end_ms` ms after the event, for `r settings$n_L1` first language (L1) speakers and `r settings$n_L2` second language (L2) learners of Spanish.
+- Neighbouring electrodes and time points with *p* < `r str_remove(sprintf("%.2f", settings$cluster_threshold), "^0")` formed a cluster. The sum of the *t* values of each cluster was compared with the largest cluster sums of `r settings$permutations` random permutations of the data, with a two-sided significance level of `r str_remove(sprintf("%.2f", settings$alpha), "^0")`.
+- Each comparison of two conditions was tested within each group at the pre test (pre) and at the post test (post). The difference between the two conditions was then compared between the groups and between pre and post.
+- The noun cue was also tested from 136 to 200 ms only, the early part of the PrAN window.
+- `r nrow(tests)` tests were run. With this number of tests, some clusters at *p* < .05 are expected by chance. The *p* values were therefore corrected for the false discovery rate (FDR) within three families of tests.
+- The planned family has `r family_n[["planned"]]` tests. It includes the four planned comparisons (verb violation, verb stress, noun violation, and noun cue) within each group at pre and at post.
+- The group and phase family has `r family_n[["group and phase"]]` tests. It includes the differences of the four planned comparisons between the groups and between pre and post.
+- The additional family has `r family_n[["additional"]]` tests. It includes every other test.
+- A cluster that is significant only before the correction is reported for description and is not interpreted as an effect.
+- The time range and the electrodes of a cluster describe where the difference was found. They are not exact borders of the effect.
+- Each figure shows the waveforms at the electrode with the largest *t* value, with negative plotted up and a 15 Hz low-pass filter for display only. The grey area is the time range of the cluster. The topography shows the difference over that time range, and the electrodes of the cluster are drawn as large dots.
+
+# Clusters significant after correction
+
+```{r, results="asis"}
+summary_list(corrected)
+```
+
+# Clusters at *p* < .05 before correction only
+
+```{r, results="asis"}
+summary_list(uncorrected)
+
+without <- setdiff(levels(clusters$description), unique(as.character(significant$description)))
+if (length(without) > 0) {
+  cat("\n**No cluster at *p* < .05**\n\n")
+  cat(paste0("- ", without, "\n"), sep = "")
+}
+```
+
+```{r, results="asis"}
+for (name in levels(clusters$description)) {
+  rows <- filter(clusters, description == name)
+  found <- filter(rows, significant == 1)
+
+  cat("\n\n# ", name, "\n\n", sep = "")
+
+  if (nrow(found) == 0) {
+    cat("- No cluster reached *p* < .05 before correction in any comparison.\n\n")
+  }
+  for (i in seq_len(nrow(found))) {
+    cat("- ", sentence(found[i, ]), "\n\n", sep = "")
+    cat("![](", file.path(FIGURE_DIR, found$figure[i]), ")\n\n", sep = "")
+  }
+
+  cat("\n**All comparisons**\n\n")
+  print(kable(smallest(rows)))
+  cat("\n\n")
+}
+```

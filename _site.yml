@@ -7,6 +7,8 @@ navbar:
       href: index.html
     - text: "Results"
       href: eeg_study_results.html
+    - text: "Cluster tests"
+      href: cluster_tests.html
 output:
   html_document:
     theme: cosmo
