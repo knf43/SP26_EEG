@@ -20,10 +20,10 @@ WINDOWS <- tibble::tribble(
   "verb_F0", "centrofrontal",  "PrAN",      136, 280,
   "verb_F0", "left_anterior",  "LAN",       225, 300,
   "verb_F0", "centroparietal", "N400",      300, 500,
-  "verb_F0", "left_anterior",  "P600",      400, 700,
+  "verb_F0", "centroparietal", "P600",      400, 700,
   "suffix",  "left_anterior",  "LAN",       225, 300,
   "suffix",  "centroparietal", "N400",      300, 500,
-  "suffix",  "left_anterior",  "P600",      400, 700
+  "suffix",  "centroparietal", "P600",      400, 700
 )
 
 # data

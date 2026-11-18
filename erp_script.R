@@ -13,7 +13,6 @@ ERP_FILE   <- if (BASELINE == "event") {
 }
 AUDIO_DIR  <- "~/Kaylee_SP26/trigger_audio"
 OUTPUT_DIR <- "~/Desktop/SP26_data/erp_output"
-AMP_LIMIT  <- 100       # uV; NA disables the trial-level amplitude screen
 
 dir_create(OUTPUT_DIR)
 
@@ -116,22 +115,6 @@ main <- function(erp_file = ERP_FILE, audio_dir = AUDIO_DIR) {
            phase       = factor(phase, levels = c("exp_pre", "training", "exp_post"))) |>
     select(-cond_name_tr, -verb_stress_tr)
 
-  # amplitude screen
-  # a pre-sentence baseline can leave a window mean displaced with no local
-  # artifact; a per-event baseline mostly removes that, so this should be tiny
-  if (!is.na(AMP_LIMIT)) {
-    n_before <- nrow(erp)
-    over <- erp |> filter(abs(amplitude) > AMP_LIMIT)
-    erp  <- erp |> filter(abs(amplitude) <= AMP_LIMIT)
-    message("  amplitude screen at +-", AMP_LIMIT, " uV: removed ",
-            n_before - nrow(erp), " of ", n_before, " rows (",
-            sprintf("%.2f", 100 * (n_before - nrow(erp)) / n_before), "%)")
-    if (nrow(over) > 0)
-      message("    by participant: ",
-              over |> count(participant) |>
-                mutate(s = paste0(participant, ":", n)) |> pull(s) |> paste(collapse = " "))
-  }
-
   # summaries
   by_pp <- erp |>
     group_by(participant, group, phase, component) |>
@@ -150,7 +133,7 @@ main <- function(erp_file = ERP_FILE, audio_dir = AUDIO_DIR) {
     count(participant, group, phase, component, name = "n_trials") |>
     arrange(participant, phase, component)
 
-  message("\n  rows after screening: ", nrow(erp))
+  message("\n  rows: ", nrow(erp))
 
   cat("\n--- trials per component, by phase (mean across participants) ---\n")
   trials_per |>
@@ -162,8 +145,7 @@ main <- function(erp_file = ERP_FILE, audio_dir = AUDIO_DIR) {
   invisible(list(baseline = BASELINE, erp = erp, by_pp = by_pp, by_grp = by_grp,
                  trials_per = trials_per,
                  cond_legend_prepost = COND_LEGEND_PREPOST,
-                 cond_legend_training = COND_LEGEND_TRAINING,
-                 amp_limit = AMP_LIMIT))
+                 cond_legend_training = COND_LEGEND_TRAINING))
 }
 
 erp <- main()

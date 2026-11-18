@@ -5,10 +5,8 @@ navbar:
   left:
     - text: "Home"
       href: index.html
-    - text: "Behavioural"
-      href: behavioral.html
-    - text: "ERP"
-      href: erp_results.html
+    - text: "Results"
+      href: eeg_study_results.html
 output:
   html_document:
     theme: cosmo

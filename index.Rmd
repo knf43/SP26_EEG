@@ -58,11 +58,8 @@ The six versions of one item are shown below.
 | Behavioural analysis | `r np(beh)` | `r np(beh, 'L1')` | `r np(beh, 'L2')` |
 | ERP analysis | `r np(erp)` | `r np(erp, 'L1')` | `r np(erp, 'L2')` |
 
-Four participants were excluded from the ERP analysis for excessive artifact rejection. Details are on the ERP page.
+The ERP analysis excluded `r np(beh) - np(erp)` participants because fewer than 50% of their epochs were artifact-free at an analysed event.
 
-## Analyses
+## Results
 
-- **[Behavioural](behavioral.html)**: accuracy and reaction time at pre-test and post-test, and across training.
-- **[ERP](erp_results.html)**: event-related potentials at pre-test and post-test, time-locked to verb F0 and suffix onset.
-
-Training-phase ERPs and the brain-to-behaviour analyses will be added as separate pages.
+The **[SP26 EEG Study Results](eeg_study_results.html)** page reports reaction times, response accuracy, and event-related potentials (ERPs) at pre-test, at post-test, and across training.

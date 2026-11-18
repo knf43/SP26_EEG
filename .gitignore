@@ -6,3 +6,6 @@
 *.bak
 *.knit.md
 patch_behavioral.py
+*.bak_*
+_to_delete/
+slide_rewrite.md

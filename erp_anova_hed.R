@@ -1,200 +1,185 @@
-# ============================================================
-# Hed-style repeated-measures ANOVAs on the SP26 ERP data
-#
-# Hed et al. (2019, p. 109): "the same procedure as in Roll et al. (2015)
-# was used. Thus, repeated measure ANOVAs were conducted with factors
-# session (pre and post), tone (accent 1 and accent 2) and validity (valid,
-# invalid), using the average value for each participant and condition for
-# the ANOVA."
-#
-# So: average within participant x condition FIRST, then analyse the means.
-# This averages away the trial-level noise that makes the single-trial LMMs
-# look so weak (marginal R2 ~ .002), and is the analysis the source paper
-# would recognise.
-#
-# Group (L1 vs L2) is added as a between-subjects factor; Hed had only L2
-# learners.
-#
-# EXPLORATORY. The confirmatory analysis is erp_statistical_analysis.R.
-# This is here to see the shape of the data, not to replace it. Note that a
-# group x session x tone x validity ANOVA has 15 main effects and
-# interactions, so its familywise error rate is around .54 (Luck & Gaspelin
-# 2017, p. 10). Treat anything here as descriptive.
-# ============================================================
+# erp anovas
 
+# libraries
 library(tidyverse)
 library(fs)
+library(afex)
+library(emmeans)
 
+# configuration
 OUTPUT_DIR <- "~/Desktop/SP26_data/erp_output"
 ANOVA_DIR  <- path(OUTPUT_DIR, "anova")
+BLOCK_SIZE <- 30
+
 dir_create(ANOVA_DIR)
 
-has_afex <- requireNamespace("afex", quietly = TRUE)
-if (!has_afex) {
-  message("afex is not installed. Falling back to base aov(), which gives no ",
-          "Greenhouse-Geisser correction.\n  install.packages('afex') for the ",
-          "standard treatment.")
+# data
+source("erp_script.R")
+
+dat <- erp$erp |>
+  mutate(group       = factor(group, levels = c("L1", "L2")),
+         verb_stress = factor(verb_stress, levels = c("paroxytone", "oxytone")),
+         verb_match  = factor(verb_match, levels = c("Match", "Mismatch")),
+         noun_match  = factor(noun_match, levels = c("Match", "Mismatch")),
+         splice      = factor(splice, levels = c("a", "c")))
+
+prepost <- dat |>
+  filter(erp_phase == "experimental") |>
+  mutate(phase = factor(phase, levels = c("exp_pre", "exp_post"),
+                        labels = c("pre", "post")))
+
+training_position <- load_audio(AUDIO_DIR) |>
+  filter(phase == "training") |>
+  group_by(participant) |>
+  mutate(position = rank(trial)) |>
+  ungroup() |>
+  select(participant, trial, position)
+
+training <- dat |>
+  filter(erp_phase == "training", component == "PrAN_verb") |>
+  left_join(training_position, by = c("participant", "trial")) |>
+  mutate(block = factor(paste0("block", ceiling(position / BLOCK_SIZE))))
+
+# models
+VERB_CONDITIONS <- c("a", "c", "e", "f")
+NOUN_CONDITIONS <- c("a", "b", "d", "f")
+ALL_CONDITIONS  <- c("a", "b", "c", "d", "e", "f")
+
+MODELS <- list(
+  PrAN_noun = list(conditions = ALL_CONDITIONS,
+                   within = c("phase", "splice"),
+                   effect = "splice"),
+  PrAN_verb = list(conditions = NOUN_CONDITIONS,
+                   within = c("phase", "verb_stress", "noun_match"),
+                   effect = "verb_stress"),
+  LAN_noun  = list(conditions = NOUN_CONDITIONS,
+                   within = c("phase", "verb_stress", "noun_match"),
+                   effect = "noun_match"),
+  N400_noun = list(conditions = NOUN_CONDITIONS,
+                   within = c("phase", "verb_stress", "noun_match"),
+                   effect = "noun_match"),
+  P600_noun = list(conditions = NOUN_CONDITIONS,
+                   within = c("phase", "verb_stress", "noun_match"),
+                   effect = "noun_match"),
+  LAN_verb  = list(conditions = VERB_CONDITIONS,
+                   within = c("phase", "verb_stress", "verb_match"),
+                   effect = "verb_match"),
+  N400_verb = list(conditions = VERB_CONDITIONS,
+                   within = c("phase", "verb_stress", "verb_match"),
+                   effect = "verb_match"),
+  P600_verb = list(conditions = VERB_CONDITIONS,
+                   within = c("phase", "verb_stress", "verb_match"),
+                   effect = "verb_match")
+)
+
+# helper functions
+cell_means <- function(data, within) {
+  data |>
+    group_by(participant, group, across(all_of(within))) |>
+    summarise(amplitude = mean(amplitude), trials = n(), .groups = "drop")
 }
 
-# reuse `erp` if erp_script.R has already been sourced this session
-if (!exists("erp")) source("erp_script.R")
-dat <- erp$erp
+describe <- function(means, label, effect, time) {
+  means |>
+    group_by(participant, group, time = .data[[time]], level = .data[[effect]]) |>
+    summarise(amplitude = mean(amplitude), .groups = "drop") |>
+    group_by(group, time, level) |>
+    summarise(mean = round(mean(amplitude), 2), sd = round(sd(amplitude), 2),
+              participants = n(), .groups = "drop") |>
+    mutate(model = label, time = as.character(time),
+           level = as.character(level), .before = 1)
+}
 
-# ---- the two 2x2 designs -------------------------------------
-# verb validity:  a = parox valid, c = parox invalid, f = oxy valid, e = oxy invalid
-# noun validity:  a = parox valid, d = parox invalid, f = oxy valid, b = oxy invalid
-#
-# A plain list, not a tibble: storing character vectors in a tribble makes
-# list columns, which dplyr then refuses to print or bind.
-design_spec <- function(which_design) {
-  switch(which_design,
-    verb = list(conds = c("a","c","e","f"), valid = c("a","f"), invalid = c("c","e")),
-    noun = list(conds = c("a","b","d","f"), valid = c("a","f"), invalid = c("d","b")),
-    stop("design_spec: unknown design '", which_design, "'")
+fit_anova <- function(means, within) {
+  suppressMessages(
+    aov_ez(id = "participant", dv = "amplitude", data = means,
+           between = "group", within = within,
+           anova_table = list(es = "pes"))
   )
 }
 
-COMPONENT_DESIGN <- tibble::tribble(
-  ~component,  ~design,
-  "LAN_noun",  "noun",
-  "N400_noun", "noun",
-  "P600_noun", "noun",
-  "LAN_verb",  "verb",
-  "N400_verb", "verb",
-  "P600_verb", "verb",
-  "PrAN_verb", "noun",   # stress is the effect of interest; validity carried along
-  "PrAN_noun", "cue"     # handled separately: splice a vs c, not a 2x2
-)
-
-# ---- participant x cell means, exactly what Hed analysed ------
-cell_means <- function(comp, which_design) {
-  spec <- design_spec(which_design)
-  d <- dat |>
-    filter(component == comp, erp_phase == "experimental",
-           cond %in% spec$conds)
-
-  d |>
-    mutate(
-      session  = factor(as.character(phase), levels = c("exp_pre", "exp_post"),
-                        labels = c("pre", "post")),
-      tone     = factor(verb_stress, levels = c("paroxytone", "oxytone")),
-      validity = factor(if_else(cond %in% spec$valid, "valid", "invalid"),
-                        levels = c("valid", "invalid")),
-      group    = factor(group, levels = c("L1", "L2")),
-      participant = factor(participant)
-    ) |>
-    group_by(participant, group, session, tone, validity) |>
-    summarise(amp = mean(amplitude, na.rm = TRUE),
-              n_trials = n(), .groups = "drop")
-}
-
-run_anova <- function(cm, label) {
-  if (has_afex) {
-    fit <- afex::aov_ez(id = "participant", dv = "amp", data = cm,
-                        between = "group",
-                        within  = c("session", "tone", "validity"),
-                        type = 3, include_aov = FALSE)
-    as.data.frame(fit$anova_table) |>
-      rownames_to_column("effect") |>
-      transmute(model = label, effect,
-                df1 = `num Df`, df2 = `den Df`,
-                F = round(F, 2), p = signif(`Pr(>F)`, 3),
-                ges = round(ges, 3))
-  } else {
-    fit <- aov(amp ~ group * session * tone * validity +
-                 Error(participant / (session * tone * validity)), data = cm)
-    s <- summary(fit)
-    map_dfr(names(s), function(stratum) {
-      tb <- as.data.frame(s[[stratum]][[1]]) |> rownames_to_column("effect")
-      tb |> filter(!str_detect(effect, "Residuals")) |>
-        transmute(model = label, effect = str_trim(effect),
-                  df1 = Df, df2 = NA_real_,
-                  F = round(`F value`, 2), p = signif(`Pr(>F)`, 3),
-                  ges = NA_real_)
-    })
-  }
-}
-
-# ---- run --------------------------------------------------------
-res_l <- list(); means_l <- list()
-
-for (i in seq_len(nrow(COMPONENT_DESIGN))) {
-  comp <- COMPONENT_DESIGN$component[i]
-  des  <- COMPONENT_DESIGN$design[i]
-  if (des == "cue") next          # PrAN_noun handled below
-
-  message("\n=== ", comp, "  (", des, " validity design) ===")
-  cm <- cell_means(comp, des)
-  means_l[[comp]] <- cm |> mutate(model = comp)
-  res_l[[comp]]   <- run_anova(cm, comp)
-  print(as_tibble(res_l[[comp]]), n = 20)
-}
-
-# ---- PrAN_noun: the noun cue, splice a vs c ---------------------
-message("\n=== PrAN_noun  (noun cue: splice a vs c) ===")
-cm_cue <- dat |>
-  filter(component == "PrAN_noun", erp_phase == "experimental",
-         !is.na(splice)) |>
-  mutate(session = factor(as.character(phase),
-                          levels = c("exp_pre", "exp_post"),
-                          labels = c("pre", "post")),
-         cue     = factor(splice, levels = c("a", "c")),
-         group   = factor(group, levels = c("L1", "L2")),
-         participant = factor(participant)) |>
-  group_by(participant, group, session, cue) |>
-  summarise(amp = mean(amplitude, na.rm = TRUE),
-            n_trials = n(), .groups = "drop")
-
-res_cue <- if (has_afex) {
-  fit <- afex::aov_ez(id = "participant", dv = "amp", data = cm_cue,
-                      between = "group", within = c("session", "cue"),
-                      type = 3, include_aov = FALSE)
+anova_table <- function(fit, label) {
   as.data.frame(fit$anova_table) |>
     rownames_to_column("effect") |>
-    transmute(model = "PrAN_noun", effect,
-              df1 = `num Df`, df2 = `den Df`,
-              F = round(F, 2), p = signif(`Pr(>F)`, 3),
-              ges = round(ges, 3))
-} else {
-  fit <- aov(amp ~ group * session * cue +
-               Error(participant / (session * cue)), data = cm_cue)
-  s <- summary(fit)
-  map_dfr(names(s), function(stratum) {
-    tb <- as.data.frame(s[[stratum]][[1]]) |> rownames_to_column("effect")
-    tb |> filter(!str_detect(effect, "Residuals")) |>
-      transmute(model = "PrAN_noun", effect = str_trim(effect),
-                df1 = Df, df2 = NA_real_,
-                F = round(`F value`, 2), p = signif(`Pr(>F)`, 3),
-                ges = NA_real_)
-  })
+    transmute(model = label, effect,
+              df1 = round(`num Df`, 2), df2 = round(`den Df`, 2),
+              F = round(F, 2), p = round(`Pr(>F)`, 4), pes = round(pes, 3))
 }
-print(as_tibble(res_cue), n = 20)
 
-# ---- training growth, simple correlation -----------------------
-# Hed correlated PrAN with behaviour rather than modelling trials; here the
-# simplest look is whether mean training PrAN differs by group.
-cm_train <- dat |>
-  filter(component == "PrAN_verb", erp_phase == "training") |>
-  mutate(group = factor(group, levels = c("L1", "L2")),
-         half  = if_else(trial <= median(trial), "first", "second")) |>
-  group_by(participant, group, half) |>
-  summarise(amp = mean(amplitude, na.rm = TRUE), .groups = "drop")
+followup <- function(fit, label, effect, by) {
+  contrasts <- emmeans(fit, as.formula(paste("~", effect, "|",
+                                             paste(by, collapse = " * "))),
+                       model = "multivariate") |>
+    pairs(reverse = TRUE)
+  interval <- confint(contrasts, adjust = "none")
 
-message("\n=== training PrAN, first vs second half ===")
-print(cm_train |> group_by(group, half) |>
-        summarise(mean_amp = round(mean(amp), 2),
-                  se = round(sd(amp) / sqrt(n()), 2), .groups = "drop"))
+  summary(contrasts, by = NULL, adjust = "fdr") |>
+    as_tibble() |>
+    mutate(lower = interval$lower.CL, upper = interval$upper.CL) |>
+    mutate(across(c(estimate, SE, t.ratio, lower, upper), \(x) round(x, 2)),
+           p.value = round(p.value, 4)) |>
+    rename(time = all_of(by[2])) |>
+    mutate(model = label, time = as.character(time), .before = 1)
+}
 
-# ---- collect ----------------------------------------------------
-res_l[["PrAN_noun"]] <- res_cue
-anova_all <- bind_rows(res_l)
-means_all <- bind_rows(means_l)
+# cell means
+prepost_means <- imap(MODELS, \(model, name) {
+  prepost |>
+    filter(component == name, cond %in% model$conditions) |>
+    cell_means(model$within)
+})
 
-write_csv(anova_all, path(ANOVA_DIR, "hed_style_anova.csv"))
-write_csv(means_all, path(ANOVA_DIR, "cell_means.csv"))
-write_csv(cm_cue,    path(ANOVA_DIR, "cell_means_cue.csv"))
+training_means <- cell_means(training, c("block", "verb_stress"))
 
-message("\n--- everything at p < .05 ---")
-print(as_tibble(anova_all) |> filter(p < .05), n = 50)
+# descriptive statistics
+prepost_descriptives <- imap(MODELS, \(model, name) {
+  describe(prepost_means[[name]], name, model$effect, "phase")
+})
 
-message("\nSaved to ", ANOVA_DIR)
+training_descriptives <- describe(training_means, "PrAN_training",
+                                  "verb_stress", "block")
+
+descriptives <- bind_rows(prepost_descriptives) |>
+  bind_rows(training_descriptives)
+
+# pre and post anovas
+prepost_fits <- imap(MODELS, \(model, name) {
+  fit_anova(prepost_means[[name]], model$within)
+})
+
+prepost_anova <- imap(prepost_fits, \(fit, name) anova_table(fit, name))
+
+prepost_followup <- imap(prepost_fits, \(fit, name) {
+  followup(fit, name, MODELS[[name]]$effect, c("group", "phase"))
+})
+
+# training anova
+training_fit <- fit_anova(training_means, c("block", "verb_stress"))
+
+training_anova    <- anova_table(training_fit, "PrAN_training")
+training_followup <- followup(training_fit, "PrAN_training", "verb_stress",
+                              c("group", "block"))
+
+# results
+anova_all    <- bind_rows(prepost_anova) |> bind_rows(training_anova)
+followup_all <- bind_rows(prepost_followup) |> bind_rows(training_followup)
+means_all    <- bind_rows(prepost_means, .id = "model") |>
+  bind_rows(mutate(training_means, model = "PrAN_training"))
+
+cat("\ndescriptive statistics\n")
+print(descriptives, n = Inf)
+
+cat("\nanova table\n")
+print(anova_all, row.names = FALSE)
+
+cat("\npairwise comparisons, fdr corrected\n")
+print(followup_all, n = Inf)
+
+cat("\neffects at p < .05\n")
+print(filter(anova_all, p < .05), row.names = FALSE)
+
+# save
+write_csv(descriptives, path(ANOVA_DIR, "anova_descriptives.csv"))
+write_csv(anova_all,    path(ANOVA_DIR, "anova_table.csv"))
+write_csv(followup_all, path(ANOVA_DIR, "anova_followup.csv"))
+write_csv(means_all,    path(ANOVA_DIR, "anova_cell_means.csv"))
