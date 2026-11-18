@@ -65,6 +65,7 @@ anova         <- read_results(ANOVA_DIR, "anova_table.csv")
 differences   <- read_results(ANOVA_DIR, "anova_followup.csv")
 erp_means     <- read_results(ANOVA_DIR, "anova_descriptives.csv")
 cell_means    <- read_results(ANOVA_DIR, "anova_cell_means.csv")
+stress_by_noun <- read_results(ANOVA_DIR, "anova_stress_by_noun_match.csv")
 topography    <- read_results(EXPORT_DIR, "sp26_topography_means.csv")
 
 # helper functions
@@ -184,6 +185,12 @@ noun_cue_mean <- function(model_name, cue) {
     mutate(noun_cue = if_else((verb_stress == "paroxytone") == (noun_match == "Match"),
                               "paroxytone", "oxytone")) |>
     filter(noun_cue == cue) |>
+    amplitude_mean()
+}
+
+stress_noun_mean <- function(model_name, stress, match) {
+  cell_means |>
+    filter(model == model_name, verb_stress == stress, noun_match == match) |>
     amplitude_mean()
 }
 
@@ -403,6 +410,28 @@ figure("erp_matlab_PrAN_verb_left_FC5.png")
 - In the L1 group, the amplitude was more negative for oxytone than for paroxytone stems at pre (`r difference("PrAN_verb_left", "L1", "pre")`) and did not differ at post (`r difference("PrAN_verb_left", "L1", "post")`).
 - In the L2 group, the amplitude did not differ between oxytone and paroxytone stems at pre (`r difference("PrAN_verb_left", "L2", "pre")`) and was more negative for oxytone than for paroxytone stems at post (`r difference("PrAN_verb_left", "L2", "post")`).
 - The overall amplitude changed from pre to post in opposite directions in the two groups (Group × Phase, `r anova_result("PrAN_verb_left", "group:phase")`). The amplitude was more negative at post than at pre in the L1 group (*M* = `r group_mean("PrAN_verb_left", "L1", "phase", "post")` µV vs. `r group_mean("PrAN_verb_left", "L1", "phase", "pre")` µV) and less negative at post than at pre in the L2 group (*M* = `r group_mean("PrAN_verb_left", "L2", "phase", "post")` µV vs. `r group_mean("PrAN_verb_left", "L2", "phase", "pre")` µV).
+
+**Exploratory comparison of the PrAN after a matched and after a mismatched noun cue**
+
+- The difference between oxytone and paroxytone stems was computed separately for the sentences in which the noun cue matched the verb stem and for the sentences in which the noun cue mismatched the verb stem.
+- In the centrofrontal ROI, oxytone stems were more negative than paroxytone stems after a matched noun cue (*M* = `r stress_noun_mean("PrAN_verb", "oxytone", "Match")` µV vs. `r stress_noun_mean("PrAN_verb", "paroxytone", "Match")` µV) and not after a mismatched noun cue (*M* = `r stress_noun_mean("PrAN_verb", "oxytone", "Mismatch")` µV vs. `r stress_noun_mean("PrAN_verb", "paroxytone", "Mismatch")` µV; Verb Stress × Noun Match, `r anova_result("PrAN_verb", "verb_stress:noun_match")`).
+- In the left anterior ROI, the difference between oxytone and paroxytone stems was also larger after a matched noun cue than after a mismatched noun cue (matched noun cue, *M* = `r stress_noun_mean("PrAN_verb_left", "oxytone", "Match")` µV vs. `r stress_noun_mean("PrAN_verb_left", "paroxytone", "Match")` µV; mismatched noun cue, *M* = `r stress_noun_mean("PrAN_verb_left", "oxytone", "Mismatch")` µV vs. `r stress_noun_mean("PrAN_verb_left", "paroxytone", "Mismatch")` µV), and the interaction was not significant (`r anova_result("PrAN_verb_left", "verb_stress:noun_match")`).
+- After a matched noun cue, the difference was most negative for L1 at pre and for L2 at post in both ROIs. No comparison in the table was significant after FDR correction for the eight comparisons of each ROI.
+- The Verb Stress × Noun Match interaction is the same test as the comparison of the two noun cues, so this design does not separate a PrAN that depends on agreement between the noun cue and the verb stem from two effects that add together.
+
+```{r}
+stress_by_noun |>
+  mutate(cell = sprintf("%s µV (%s)", minus(sprintf("%.2f", estimate)),
+                        if_else(p < .001, "p < .001",
+                                paste("p =", str_remove(sprintf("%.3f", p), "^0")))),
+         ROI = if_else(model == "PrAN_verb", "Centrofrontal (F3, FCz, FC1, Cz)",
+                       "Left anterior (F7, F3, FC5)")) |>
+  select(ROI, Group = group, Phase = time, noun_match, cell) |>
+  pivot_wider(names_from = noun_match, values_from = cell) |>
+  arrange(ROI, Group, desc(Phase)) |>
+  rename(`Noun cue matched` = Match, `Noun cue mismatched` = Mismatch) |>
+  kable(caption = "Oxytone minus paroxytone stems at verb F0, 136 to 280 ms, with FDR-corrected p values")
+```
 
 ## Noun cue at noun F0
 

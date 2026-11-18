@@ -163,6 +163,18 @@ training_anova    <- anova_table(training_fit, "PrAN_training")
 training_followup <- followup(training_fit, "PrAN_training", "verb_stress",
                               c("group", "block"))
 
+# verb stress by noun match
+stress_by_noun <- map_dfr(c("PrAN_verb", "PrAN_verb_left"), \(name) {
+  emmeans(prepost_fits[[name]], ~ verb_stress | group * phase * noun_match,
+          model = "multivariate") |>
+    pairs(reverse = TRUE) |>
+    summary(by = NULL, adjust = "fdr") |>
+    as_tibble() |>
+    transmute(model = name, group, time = as.character(phase), noun_match,
+              estimate = round(estimate, 2), se = round(SE, 2),
+              t = round(t.ratio, 2), p = round(p.value, 4))
+})
+
 # results
 anova_all    <- bind_rows(prepost_anova) |> bind_rows(training_anova)
 followup_all <- bind_rows(prepost_followup) |> bind_rows(training_followup)
@@ -178,6 +190,9 @@ print(anova_all, row.names = FALSE)
 cat("\npairwise comparisons, fdr corrected\n")
 print(followup_all, n = Inf)
 
+cat("\nverb stress by noun match, fdr corrected\n")
+print(stress_by_noun, n = Inf)
+
 cat("\neffects at p < .05\n")
 print(filter(anova_all, p < .05), row.names = FALSE)
 
@@ -186,3 +201,4 @@ write_csv(descriptives, path(ANOVA_DIR, "anova_descriptives.csv"))
 write_csv(anova_all,    path(ANOVA_DIR, "anova_table.csv"))
 write_csv(followup_all, path(ANOVA_DIR, "anova_followup.csv"))
 write_csv(means_all,    path(ANOVA_DIR, "anova_cell_means.csv"))
+write_csv(stress_by_noun, path(ANOVA_DIR, "anova_stress_by_noun_match.csv"))
