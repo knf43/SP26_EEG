@@ -28,7 +28,7 @@ COMPONENTS <- tribble(
   "N400_verb", "N400, verb violation", "300 to 500 ms", "Cz, CP1, CP2, Pz", "Pz",
   "P600_verb", "P600, verb violation", "400 to 700 ms", "Cz, CP1, CP2, Pz", "Pz",
   "PrAN_verb", "PrAN, verb stress",    "136 to 280 ms", "F3, FCz, FC1, Cz", "F3",
-  "PrAN_verb_left", "PrAN, verb stress, left anterior (exploratory)", "136 to 280 ms", "F7, F3, FC5", "FC5",
+  "PrAN_verb_left", "PrAN, verb stress, left anterior", "136 to 280 ms", "F7, F3, FC5", "FC5",
   "PrAN_noun", "PrAN, noun cue",       "136 to 280 ms", "F3, FCz, FC1, Cz", "F3",
   "LAN_noun",  "LAN, noun violation",  "225 to 300 ms", "F7, F3, FC5",      "F7",
   "N400_noun", "N400, noun violation", "300 to 500 ms", "Cz, CP1, CP2, Pz", "Pz",
@@ -43,8 +43,10 @@ MODEL_LABELS <- c(
   rt_training       = "Reaction time, training",
   accuracy_training = "Accuracy, training",
   PrAN_training     = "PrAN, verb stress during training",
-  PrAN_noun_early      = "PrAN, noun cue, 136 to 200 ms (exploratory)",
-  PrAN_noun_early_left = "PrAN, noun cue, 136 to 200 ms, left anterior (exploratory)",
+  PrAN_noun_early      = "PrAN, noun cue, 136 to 200 ms",
+  PrAN_verb_six        = "Noun cue and verb stress, six conditions",
+  PrAN_verb_left_six   = "Noun cue and verb stress, six conditions, left anterior",
+  PrAN_noun_early_left = "PrAN, noun cue, 136 to 200 ms, left anterior",
   deframe(select(COMPONENTS, component, label)))
 
 EFFECT_LABELS <- c(
@@ -78,6 +80,7 @@ late_rt_model   <- read_results(ANOVA_DIR, "late_training_rt_model.csv")
 late_rt_group   <- read_results(ANOVA_DIR, "late_training_rt_by_group.csv")
 late_means      <- read_results(ANOVA_DIR, "late_training_means.csv")
 acoustics       <- read_results(EXPORT_DIR, "noun_acoustics_summary.csv")
+permutation     <- read_results(ANOVA_DIR, "permutation_tests.csv")
 topography    <- read_results(EXPORT_DIR, "sp26_topography_means.csv")
 
 # helper functions
@@ -289,6 +292,16 @@ label_effect <- function(x) str_replace_all(x, EFFECT_LABELS)
 
 figure <- function(name) include_graphics(file.path(FIGURE_DIR, name))
 
+# the anova p value and the permutation p value of every effect at pre and post
+permutation_table <- bind_rows(anova, mutate(cue_anova, model = paste0(model, "_six"))) |>
+  inner_join(select(permutation, model, effect = anova_effect, p_permutation, permutations),
+             by = c("model", "effect")) |>
+  mutate(agree = (p < .05) == (p_permutation < .05)) |>
+  arrange(match(model, c("LAN_verb", "N400_verb", "P600_verb", "PrAN_verb",
+                         "PrAN_verb_left", "PrAN_verb_six", "PrAN_verb_left_six",
+                         "PrAN_noun", "PrAN_noun_early", "PrAN_noun_early_left",
+                         "LAN_noun", "N400_noun", "P600_noun")))
+
 # participants and electrodes
 behavioral_n <- distinct(prepost, group, participants) |> deframe()
 erp_n        <- distinct(erp_means, group, participants) |> deframe()
@@ -328,11 +341,12 @@ noun_lan_range <- electrode_means |>
 - Response accuracy was analysed with generalised linear mixed-effects models.
 - The models of the pre test (pre) and the post test (post) included Group, Phase, and Match as fixed effects, with Participant and Item as random effects. The training models included Group, Trial Number, and Verb Stress.
 - Mean ERP amplitudes were measured after the fundamental frequency (F0) event of the noun, the F0 event of the verb, and the suffix onset.
-- The PrAN to verb stress was also measured at the left anterior electrodes (F7, F3, and FC5). This region was selected after inspection of the topographies, so this analysis is exploratory.
-- The PrAN to the noun cue was also measured in the early part of the window (136 to 200 ms), at the planned electrodes and at the left anterior electrodes. This window was selected after inspection of the results, so this analysis is exploratory.
+- The PrAN to verb stress was measured at the centrofrontal electrodes (F3, FCz, FC1, and Cz) and at the left anterior electrodes (F7, F3, and FC5).
+- The PrAN to the noun cue was measured from 136 to 280 ms at the centrofrontal electrodes, and from 136 to 200 ms at the centrofrontal and the left anterior electrodes.
 - The duration, the fundamental frequency, and the intensity of each syllable of the noun were measured in the two versions of each noun with the Praat algorithms. The syllable boundaries are from the TextGrid of each sound.
-- In training, the mean amplitude from 600 to 800 ms after verb F0 was related to the reaction time of each trial with a linear mixed-effects model. This analysis is exploratory.
+- In training, the mean amplitude from 600 to 800 ms after verb F0 was related to the reaction time of each trial with a linear mixed-effects model.
 - Cluster-based permutation tests of the same comparisons over all electrodes, in the time window of each component, are reported on the [Cluster tests](cluster_tests.html) page.
+- Every effect of the ANOVAs at pre and post was also tested with a permutation test on difference scores, with `r format(permutation_table$permutations[1], big.mark = ",")` permutations. A difference score is one value per participant and phase, for example the amplitude for mismatched suffixes minus the amplitude for matched suffixes. The ANOVA and the permutation test gave the same decision at *p* < .05 for `r sum(permutation_table$agree)` of `r nrow(permutation_table)` effects. Both *p* values are in the last table. The training ANOVA has four blocks and is not included.
 - Mean ERP amplitudes were analysed with mixed analyses of variance (ANOVAs) with Group as a between-participant factor and Phase, Verb Stress, and Match as within-participant factors. Pairwise comparisons were corrected for the false discovery rate (FDR).
 
 # Summary of significant results
@@ -349,11 +363,11 @@ noun_lan_range <- electrode_means |>
 
 - **Verb violation at the suffix.** In the left anterior negativity (LAN) window, mismatched suffixes produced a more negative amplitude than matched suffixes in the L1 group at pre (`r difference("LAN_verb", "L1", "pre")`) and at post (`r difference("LAN_verb", "L1", "post")`) and not in the L2 group (Group × Verb Match, `r anova_result("LAN_verb", "group:verb_match")`).
 - **Pre-activation negativity (PrAN) at verb F0.** The change in the overall amplitude from pre to post differed between the groups (Group × Phase, `r anova_result("PrAN_verb", "group:phase")`). The amplitude was less negative at post than at pre in the L2 group (*M* = `r group_mean("PrAN_verb", "L2", "phase", "post")` µV vs. `r group_mean("PrAN_verb", "L2", "phase", "pre")` µV) and not in the L1 group (*M* = `r group_mean("PrAN_verb", "L1", "phase", "post")` µV vs. `r group_mean("PrAN_verb", "L1", "phase", "pre")` µV). Oxytone stems produced a more negative amplitude than paroxytone stems (*M* = `r level_mean("PrAN_verb", "verb_stress", "oxytone")` µV vs. `r level_mean("PrAN_verb", "verb_stress", "paroxytone")` µV; Verb Stress, `r anova_result("PrAN_verb", "verb_stress")`).
-- **Exploratory analysis of the PrAN at the left anterior electrodes (F7, F3, and FC5).** Oxytone stems produced a more negative amplitude than paroxytone stems in the L1 group at pre (`r difference("PrAN_verb_left", "L1", "pre")`) and in the L2 group at post (`r difference("PrAN_verb_left", "L2", "post")`), and not in the L1 group at post or in the L2 group at pre (Group × Phase × Verb Stress, `r anova_result("PrAN_verb_left", "group:phase:verb_stress")`).
-- **Exploratory analysis of the noun cue from 136 to 200 ms.** At the left anterior electrodes, oxytone noun cues produced a more negative amplitude than paroxytone noun cues (*M* = `r level_mean("PrAN_noun_early_left", "splice", "c")` µV vs. `r level_mean("PrAN_noun_early_left", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun_early_left", "splice")`). The difference was not significant at the planned electrodes (Noun Cue, `r anova_result("PrAN_noun_early", "splice")`).
+- **PrAN at the left anterior electrodes (F7, F3, and FC5).** Oxytone stems produced a more negative amplitude than paroxytone stems in the L1 group at pre (`r difference("PrAN_verb_left", "L1", "pre")`) and in the L2 group at post (`r difference("PrAN_verb_left", "L2", "post")`), and not in the L1 group at post or in the L2 group at pre (Group × Phase × Verb Stress, `r anova_result("PrAN_verb_left", "group:phase:verb_stress")`).
+- **Noun cue from 136 to 200 ms.** At the left anterior electrodes, oxytone noun cues produced a more negative amplitude than paroxytone noun cues (*M* = `r level_mean("PrAN_noun_early_left", "splice", "c")` µV vs. `r level_mean("PrAN_noun_early_left", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun_early_left", "splice")`). The difference was not significant at the centrofrontal electrodes (Noun Cue, `r anova_result("PrAN_noun_early", "splice")`).
 - **PrAN at noun F0.** The overall amplitude was less negative at post than at pre (*M* = `r level_mean("PrAN_noun", "phase", "post")` µV vs. `r level_mean("PrAN_noun", "phase", "pre")` µV; Phase, `r anova_result("PrAN_noun", "phase")`).
 - **Present and past suffixes.** Past suffixes produced a more positive amplitude than present suffixes in the N400 window (Verb Stress × Verb Match, `r anova_result("N400_verb", "verb_stress:verb_match")`) and in the P600 window (`r anova_result("P600_verb", "verb_stress:verb_match")`).
-- The noun cue in the planned window and the noun violation produced no significant effects. During training, the PrAN did not change across the blocks and did not differ between oxytone and paroxytone stems.
+- The noun cue from 136 to 280 ms and the noun violation produced no significant effects. During training, the PrAN did not change across the blocks and did not differ between oxytone and paroxytone stems.
 - All effects at *p* < .05 are listed in the tables at the end.
 
 # Behavioural results
@@ -481,20 +495,19 @@ figure("erp_matlab_PrAN_verb_F3.png")
 - The difference between oxytone and paroxytone stems was not significant for L1 at pre (`r difference("PrAN_verb", "L1", "pre")`), L1 at post (`r difference("PrAN_verb", "L1", "post")`), L2 at pre (`r difference("PrAN_verb", "L2", "pre")`), or L2 at post (`r difference("PrAN_verb", "L2", "post")`).
 - Verbs that followed an oxytone noun cue produced a more negative amplitude than verbs that followed a paroxytone noun cue (*M* = `r noun_cue_mean("PrAN_verb", "oxytone")` µV vs. `r noun_cue_mean("PrAN_verb", "paroxytone")` µV; Verb Stress × Noun Match, `r anova_result("PrAN_verb", "verb_stress:noun_match")`). In this design the Verb Stress × Noun Match interaction is the comparison of the two noun cues.
 
-**Exploratory analysis of the PrAN at the left anterior electrodes, 136 to 280 ms, ROI F7, F3, and FC5**
+**PrAN at the left anterior electrodes, 136 to 280 ms, ROI F7, F3, and FC5**
 
 ```{r}
 figure("erp_matlab_PrAN_verb_left_FC5.png")
 ```
 
-- The left anterior region was selected after inspection of the topographies. The planned analysis is the analysis of the centrofrontal ROI above.
 - Oxytone stems produced a more negative amplitude than paroxytone stems (*M* = `r level_mean("PrAN_verb_left", "verb_stress", "oxytone")` µV vs. `r level_mean("PrAN_verb_left", "verb_stress", "paroxytone")` µV; Verb Stress, `r anova_result("PrAN_verb_left", "verb_stress")`).
 - The difference between oxytone and paroxytone stems changed from pre to post in opposite directions in the two groups (Group × Phase × Verb Stress, `r anova_result("PrAN_verb_left", "group:phase:verb_stress")`).
 - In the L1 group, the amplitude was more negative for oxytone than for paroxytone stems at pre (`r difference("PrAN_verb_left", "L1", "pre")`) and did not differ at post (`r difference("PrAN_verb_left", "L1", "post")`).
 - In the L2 group, the amplitude did not differ between oxytone and paroxytone stems at pre (`r difference("PrAN_verb_left", "L2", "pre")`) and was more negative for oxytone than for paroxytone stems at post (`r difference("PrAN_verb_left", "L2", "post")`).
 - The overall amplitude changed from pre to post in opposite directions in the two groups (Group × Phase, `r anova_result("PrAN_verb_left", "group:phase")`). The amplitude was more negative at post than at pre in the L1 group (*M* = `r group_mean("PrAN_verb_left", "L1", "phase", "post")` µV vs. `r group_mean("PrAN_verb_left", "L1", "phase", "pre")` µV) and less negative at post than at pre in the L2 group (*M* = `r group_mean("PrAN_verb_left", "L2", "phase", "post")` µV vs. `r group_mean("PrAN_verb_left", "L2", "phase", "pre")` µV).
 
-**Exploratory comparison of the PrAN after a matched and after a mismatched noun cue**
+**PrAN after a matched and after a mismatched noun cue**
 
 - The difference between oxytone and paroxytone stems was computed separately for the sentences in which the noun cue matched the verb stem and for the sentences in which the noun cue mismatched the verb stem.
 - In the centrofrontal ROI, oxytone stems were more negative than paroxytone stems after a matched noun cue (*M* = `r stress_noun_mean("PrAN_verb", "oxytone", "Match")` µV vs. `r stress_noun_mean("PrAN_verb", "paroxytone", "Match")` µV) and not after a mismatched noun cue (*M* = `r stress_noun_mean("PrAN_verb", "oxytone", "Mismatch")` µV vs. `r stress_noun_mean("PrAN_verb", "paroxytone", "Mismatch")` µV; Verb Stress × Noun Match, `r anova_result("PrAN_verb", "verb_stress:noun_match")`).
@@ -516,14 +529,42 @@ stress_by_noun |>
   kable(caption = "Oxytone minus paroxytone stems at verb F0, 136 to 280 ms, with FDR-corrected p values")
 ```
 
-**Exploratory comparison of the PrAN after a paroxytone and after an oxytone noun cue, with all six conditions**
+**Noun cue and verb stress at verb F0, with all six conditions, 136 to 280 ms**
 
-- The difference between oxytone and paroxytone stems was computed separately for the sentences with a paroxytone noun cue (conditions 1, 2, and 3) and for the sentences with an oxytone noun cue (conditions 4, 5, and 6). The conditions with a mismatched suffix were included, because the suffix follows verb F0.
-- In the centrofrontal ROI, verbs after an oxytone noun cue were more negative than verbs after a paroxytone noun cue (*M* = `r cue_mean("PrAN_verb", cue = "c")` µV vs. `r cue_mean("PrAN_verb", cue = "a")` µV; Noun Cue, `r cue_result("PrAN_verb", "splice")`), and oxytone stems were more negative than paroxytone stems (*M* = `r cue_mean("PrAN_verb", stress = "oxytone")` µV vs. `r cue_mean("PrAN_verb", stress = "paroxytone")` µV; Verb Stress, `r cue_result("PrAN_verb", "verb_stress")`).
+- All six conditions were analysed with Noun Cue (paroxytone cue in conditions 1, 2, and 3; oxytone cue in conditions 4, 5, and 6) and Verb Stress (paroxytone stems in conditions 1, 3, and 4; oxytone stems in conditions 2, 5, and 6). The conditions with a mismatched suffix were included, because the suffix follows verb F0.
+
+*Noun cue*
+
+```{r}
+figure("erp_matlab_NounCue_verb_F3.png")
+figure("erp_matlab_NounCue_verb_left_FC5.png")
+```
+
+- In the centrofrontal ROI, verbs after an oxytone noun cue were more negative than verbs after a paroxytone noun cue (*M* = `r cue_mean("PrAN_verb", cue = "c")` µV vs. `r cue_mean("PrAN_verb", cue = "a")` µV; Noun Cue, `r cue_result("PrAN_verb", "splice")`).
+- In the left anterior ROI, the effect of the noun cue was not significant (*M* = `r cue_mean("PrAN_verb_left", cue = "c")` µV vs. `r cue_mean("PrAN_verb_left", cue = "a")` µV; Noun Cue, `r cue_result("PrAN_verb_left", "splice")`).
+
+*Verb stress*
+
+```{r}
+figure("erp_matlab_PrAN_verb_six_F3.png")
+figure("erp_matlab_PrAN_verb_six_left_FC5.png")
+```
+
+- In the centrofrontal ROI, oxytone stems were more negative than paroxytone stems (*M* = `r cue_mean("PrAN_verb", stress = "oxytone")` µV vs. `r cue_mean("PrAN_verb", stress = "paroxytone")` µV; Verb Stress, `r cue_result("PrAN_verb", "verb_stress")`).
+- In the left anterior ROI, oxytone stems were more negative than paroxytone stems (*M* = `r cue_mean("PrAN_verb_left", stress = "oxytone")` µV vs. `r cue_mean("PrAN_verb_left", stress = "paroxytone")` µV; Verb Stress, `r cue_result("PrAN_verb_left", "verb_stress")`).
+
+*Verb stress after each noun cue*
+
+```{r}
+figure("erp_matlab_stress_by_noun_cue_F3.png")
+figure("erp_matlab_stress_by_noun_cue_FC5.png")
+```
+
+- The figures show paroxytone and oxytone stems after a paroxytone noun cue (left panels) and after an oxytone noun cue (right panels), at F3 and at FC5.
 - In the centrofrontal ROI, the difference between oxytone and paroxytone stems did not depend on the noun cue (after an oxytone noun cue, *M* = `r cue_mean("PrAN_verb", "c", "oxytone")` µV vs. `r cue_mean("PrAN_verb", "c", "paroxytone")` µV; after a paroxytone noun cue, *M* = `r cue_mean("PrAN_verb", "a", "oxytone")` µV vs. `r cue_mean("PrAN_verb", "a", "paroxytone")` µV; Noun Cue × Verb Stress, `r cue_result("PrAN_verb", "splice:verb_stress")`).
-- In the left anterior ROI, oxytone stems were more negative than paroxytone stems (*M* = `r cue_mean("PrAN_verb_left", stress = "oxytone")` µV vs. `r cue_mean("PrAN_verb_left", stress = "paroxytone")` µV; Verb Stress, `r cue_result("PrAN_verb_left", "verb_stress")`). The effect of the noun cue was not significant (*M* = `r cue_mean("PrAN_verb_left", cue = "c")` µV vs. `r cue_mean("PrAN_verb_left", cue = "a")` µV; Noun Cue, `r cue_result("PrAN_verb_left", "splice")`), and the difference between oxytone and paroxytone stems did not depend on the noun cue (Noun Cue × Verb Stress, `r cue_result("PrAN_verb_left", "splice:verb_stress")`).
+- In the left anterior ROI, the difference between oxytone and paroxytone stems did not depend on the noun cue (Noun Cue × Verb Stress, `r cue_result("PrAN_verb_left", "splice:verb_stress")`).
 - No comparison in the table was significant after FDR correction for the eight comparisons of each ROI.
-- The noun cue and verb stress therefore had separate effects on the amplitude at verb F0. In the four conditions of the planned analysis, a matched noun cue adds the effect of the noun cue to the effect of verb stress, and a mismatched noun cue subtracts it.
+- The noun cue and verb stress therefore had separate effects on the amplitude at verb F0. In the four conditions with a matched suffix, a matched noun cue adds the effect of the noun cue to the effect of verb stress, and a mismatched noun cue subtracts it.
 
 ```{r}
 stress_by_cue |>
@@ -540,13 +581,13 @@ stress_by_cue |>
   kable(caption = "Oxytone minus paroxytone stems at verb F0, 136 to 280 ms, all six conditions, with FDR-corrected p values")
 ```
 
-**Exploratory comparison of pre and post for each stress pattern**
+**Each stress pattern at pre and at post**
 
 ```{r}
 figure("erp_matlab_stress_pre_post_FC5.png")
 ```
 
-- The figure shows paroxytone and oxytone stems separately, with pre and post in the same panel, at FC5. The four conditions of the planned analysis are included.
+- The figure shows paroxytone and oxytone stems separately, with pre and post in the same panel, at FC5. The four conditions with a matched suffix are included.
 - In the L2 group, the amplitude for paroxytone stems was less negative at post than at pre in the left anterior ROI (*M* = `r stress_phase_mean("PrAN_verb_left", "L2", "paroxytone", "post")` µV vs. `r stress_phase_mean("PrAN_verb_left", "L2", "paroxytone", "pre")` µV; post minus pre, `r phase_change("PrAN_verb_left", "L2", "paroxytone")`) and in the centrofrontal ROI (`r phase_change("PrAN_verb", "L2", "paroxytone")`). The amplitude for oxytone stems did not change significantly (left anterior, `r phase_change("PrAN_verb_left", "L2", "oxytone")`; centrofrontal, `r phase_change("PrAN_verb", "L2", "oxytone")`).
 - In the L1 group, the amplitude for paroxytone stems was more negative at post than at pre in the left anterior ROI (*M* = `r stress_phase_mean("PrAN_verb_left", "L1", "paroxytone", "post")` µV vs. `r stress_phase_mean("PrAN_verb_left", "L1", "paroxytone", "pre")` µV), and this change was not significant after FDR correction (`r phase_change("PrAN_verb_left", "L1", "paroxytone")`; centrofrontal, `r phase_change("PrAN_verb", "L1", "paroxytone")`). The amplitude for oxytone stems did not change (left anterior, `r phase_change("PrAN_verb_left", "L1", "oxytone")`; centrofrontal, `r phase_change("PrAN_verb", "L1", "oxytone")`).
 - The change in the difference between oxytone and paroxytone stems from pre to post was therefore due to the paroxytone stems in both groups. The paroxytone stems became more negative in the L1 group and less negative in the L2 group, and the oxytone stems did not change.
@@ -564,17 +605,17 @@ figure("erp_matlab_PrAN_noun_F3.png")
 - The amplitude did not differ between oxytone and paroxytone noun cues (*M* = `r level_mean("PrAN_noun", "splice", "c")` µV vs. `r level_mean("PrAN_noun", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun", "splice")`), and the difference did not vary between the groups (Group × Noun Cue, `r anova_result("PrAN_noun", "group:splice")`) or between the groups across phases (Group × Phase × Noun Cue, `r anova_result("PrAN_noun", "group:phase:splice")`).
 - The difference between oxytone and paroxytone noun cues was not significant for L1 at pre (`r difference("PrAN_noun", "L1", "pre")`), L1 at post (`r difference("PrAN_noun", "L1", "post")`), L2 at pre (`r difference("PrAN_noun", "L2", "pre")`), or L2 at post (`r difference("PrAN_noun", "L2", "post")`).
 
-**Exploratory analysis of the early part of the PrAN window, 136 to 200 ms**
+**Early part of the PrAN window, 136 to 200 ms**
 
 ```{r}
 figure("erp_matlab_PrAN_noun_early_F3.png")
 ```
 
-- The waveform is shown at F3, which is in both ROIs. The large dots in the topographies are the planned electrodes (F3, FCz, FC1, and Cz).
+- The waveform is shown at F3, which is in both ROIs. The large dots in the topographies are the centrofrontal electrodes (F3, FCz, FC1, and Cz).
 - At the left anterior electrodes (F7, F3, and FC5), oxytone noun cues produced a more negative amplitude than paroxytone noun cues (*M* = `r level_mean("PrAN_noun_early_left", "splice", "c")` µV vs. `r level_mean("PrAN_noun_early_left", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun_early_left", "splice")`). The difference did not vary between the groups (Group × Noun Cue, `r anova_result("PrAN_noun_early_left", "group:splice")`) or between the groups across phases (Group × Phase × Noun Cue, `r anova_result("PrAN_noun_early_left", "group:phase:splice")`).
 - At the left anterior electrodes, the difference between oxytone and paroxytone noun cues was negative for L1 at pre (`r difference("PrAN_noun_early_left", "L1", "pre")`), L1 at post (`r difference("PrAN_noun_early_left", "L1", "post")`), and L2 at post (`r difference("PrAN_noun_early_left", "L2", "post")`), and it was close to zero for L2 at pre (`r difference("PrAN_noun_early_left", "L2", "pre")`). No pairwise comparison was significant after FDR correction.
-- At the planned electrodes (F3, FCz, FC1, and Cz), the amplitude did not differ between oxytone and paroxytone noun cues (*M* = `r level_mean("PrAN_noun_early", "splice", "c")` µV vs. `r level_mean("PrAN_noun_early", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun_early", "splice")`), and the difference did not vary between the groups (Group × Noun Cue, `r anova_result("PrAN_noun_early", "group:splice")`) or between the groups across phases (Group × Phase × Noun Cue, `r anova_result("PrAN_noun_early", "group:phase:splice")`).
-- At the planned electrodes, the difference was not significant for L1 at pre (`r difference("PrAN_noun_early", "L1", "pre")`), L1 at post (`r difference("PrAN_noun_early", "L1", "post")`), L2 at pre (`r difference("PrAN_noun_early", "L2", "pre")`), or L2 at post (`r difference("PrAN_noun_early", "L2", "post")`).
+- At the centrofrontal electrodes (F3, FCz, FC1, and Cz), the amplitude did not differ between oxytone and paroxytone noun cues (*M* = `r level_mean("PrAN_noun_early", "splice", "c")` µV vs. `r level_mean("PrAN_noun_early", "splice", "a")` µV; Noun Cue, `r anova_result("PrAN_noun_early", "splice")`), and the difference did not vary between the groups (Group × Noun Cue, `r anova_result("PrAN_noun_early", "group:splice")`) or between the groups across phases (Group × Phase × Noun Cue, `r anova_result("PrAN_noun_early", "group:phase:splice")`).
+- At the centrofrontal electrodes, the difference was not significant for L1 at pre (`r difference("PrAN_noun_early", "L1", "pre")`), L1 at post (`r difference("PrAN_noun_early", "L1", "post")`), L2 at pre (`r difference("PrAN_noun_early", "L2", "pre")`), or L2 at post (`r difference("PrAN_noun_early", "L2", "post")`).
 
 **Acoustic difference between the two noun cues**
 
@@ -644,7 +685,7 @@ figure("erp_matlab_PrAN_training_F3.png")
 - In the L1 group, the difference between oxytone and paroxytone stems was not significant in any block (`r block_differences("L1")`).
 - In the L2 group, the difference between oxytone and paroxytone stems was not significant in any block (`r block_differences("L2")`).
 
-**Exploratory analysis of the amplitude from 600 to 800 ms and reaction time, ROI F3, FCz, FC1, and Cz**
+**Amplitude from 600 to 800 ms and reaction time, ROI F3, FCz, FC1, and Cz**
 
 - The amplitude from 600 to 800 ms after verb F0 did not differ between oxytone and paroxytone stems (Verb Stress, `r late_result("verb_stress")`), and the difference did not vary between the groups (Group × Verb Stress, `r late_result("group:verb_stress")`).
 - In the L1 group, the amplitude was `r late_mean("L1", "oxytone", "amplitude")` µV for oxytone stems and `r late_mean("L1", "paroxytone", "amplitude")` µV for paroxytone stems (oxytone minus paroxytone, `r late_difference("L1")`). In the L2 group, the amplitude was `r late_mean("L2", "oxytone", "amplitude")` µV for oxytone stems and `r late_mean("L2", "paroxytone", "amplitude")` µV for paroxytone stems (`r late_difference("L2")`).
@@ -677,4 +718,15 @@ anova |>
             p = if_else(p < .001, "< .001", str_remove(sprintf("%.3f", p), "^0")),
             `ηp²` = str_remove(sprintf("%.2f", pes), "^0")) |>
   kable(align = "llrrrr")
+```
+
+# ANOVA and permutation *p* values
+
+```{r}
+permutation_table |>
+  transmute(Component = MODEL_LABELS[model], Effect = label_effect(effect),
+            `ANOVA p` = if_else(p < .001, "< .001", str_remove(sprintf("%.3f", p), "^0")),
+            `Permutation p` = if_else(p_permutation < .001, "< .001",
+                                      str_remove(sprintf("%.3f", p_permutation), "^0"))) |>
+  kable(align = "llrr")
 ```

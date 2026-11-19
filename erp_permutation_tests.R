@@ -10,21 +10,27 @@ PERMUTATIONS <- 10000
 SEED         <- 26
 
 # the difference score is first minus second. where the anova has a second
-# condition factor, the interaction score is the difference score at
-# other_first minus the difference score at other_second.
+# condition factor, its difference score is other_first minus other_second,
+# and the interaction score is the difference score at other_first minus the
+# difference score at other_second.
 EFFECTS <- tribble(
-  ~model,      ~effect,       ~first,     ~second,      ~other,        ~other_first, ~other_second,
-  "LAN_verb",  "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",
-  "N400_verb", "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",
-  "P600_verb", "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",
-  "PrAN_verb", "verb_stress", "oxytone",  "paroxytone", "noun_match",  "Match",      "Mismatch",
-  "PrAN_noun", "splice",      "c",        "a",          NA,            NA,           NA,
-  "LAN_noun",  "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",
-  "N400_noun", "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",
-  "P600_noun", "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone"
+  ~model,                 ~effect,       ~first,     ~second,      ~other,        ~other_first, ~other_second, ~interaction,
+  "LAN_verb",             "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:verb_match",
+  "N400_verb",            "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:verb_match",
+  "P600_verb",            "verb_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:verb_match",
+  "PrAN_verb",            "verb_stress", "oxytone",  "paroxytone", "noun_match",  "Match",      "Mismatch",    "verb_stress:noun_match",
+  "PrAN_verb_left",       "verb_stress", "oxytone",  "paroxytone", "noun_match",  "Match",      "Mismatch",    "verb_stress:noun_match",
+  "PrAN_verb_six",        "verb_stress", "oxytone",  "paroxytone", "splice",      "c",          "a",           "splice:verb_stress",
+  "PrAN_verb_left_six",   "verb_stress", "oxytone",  "paroxytone", "splice",      "c",          "a",           "splice:verb_stress",
+  "PrAN_noun",            "splice",      "c",        "a",          NA,            NA,           NA,            NA,
+  "PrAN_noun_early",      "splice",      "c",        "a",          NA,            NA,           NA,            NA,
+  "PrAN_noun_early_left", "splice",      "c",        "a",          NA,            NA,           NA,            NA,
+  "LAN_noun",             "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:noun_match",
+  "N400_noun",            "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:noun_match",
+  "P600_noun",            "noun_match",  "Mismatch", "Match",      "verb_stress", "oxytone",    "paroxytone",  "verb_stress:noun_match"
 )
 
-WITHIN_ORDER <- c("verb_stress", "verb_match", "noun_match", "splice")
+SCORES <- c("difference", "other_difference", "interaction", "mean")
 
 ANOVA_TERMS <- c("all participants"                        = "%s",
                  "L1 against L2"                           = "group:%s",
@@ -36,24 +42,38 @@ MEAN_TERMS <- c("L1 against L2"                           = "group",
                 "change from pre to post, L1 against L2"  = "group:phase")
 
 # data
-cell_means <- read_csv(path(ANOVA_DIR, "anova_cell_means.csv"), show_col_types = FALSE)
-anova      <- read_csv(path(ANOVA_DIR, "anova_table.csv"), show_col_types = FALSE)
+# the six-condition analysis of the noun cue and verb stress has its own files
+six <- function(x) mutate(x, model = paste0(model, "_six"))
 
-# one difference score, one mean and one interaction score per participant
-# and phase
-scores <- pmap_dfr(EFFECTS, \(model, effect, first, second, other, other_first, other_second) {
-  rows <- filter(cell_means, .data$model == .env$model)
+cell_means <- bind_rows(
+  read_csv(path(ANOVA_DIR, "anova_cell_means.csv"), show_col_types = FALSE),
+  six(read_csv(path(ANOVA_DIR, "anova_noun_cue_cell_means.csv"), show_col_types = FALSE)))
 
-  main <- rows |>
-    group_by(participant, group, phase, level = .data[[effect]]) |>
+anova <- bind_rows(
+  read_csv(path(ANOVA_DIR, "anova_table.csv"), show_col_types = FALSE),
+  six(read_csv(path(ANOVA_DIR, "anova_noun_cue_table.csv"), show_col_types = FALSE)))
+
+# scores, one row per participant and phase
+level_difference <- function(rows, factor_name, first, second) {
+  rows |>
+    group_by(participant, group, phase, level = .data[[factor_name]]) |>
     summarise(amplitude = mean(amplitude), .groups = "drop") |>
     pivot_wider(names_from = level, values_from = amplitude) |>
     transmute(participant, group, phase,
               difference = .data[[first]] - .data[[second]],
               mean       = (.data[[first]] + .data[[second]]) / 2)
+}
+
+scores <- pmap_dfr(EFFECTS, \(model, effect, first, second, other, other_first,
+                             other_second, interaction) {
+  rows <- filter(cell_means, .data$model == .env$model)
+  main <- level_difference(rows, effect, first, second)
 
   if (!is.na(other)) {
-    main <- rows |>
+    other_scores <- level_difference(rows, other, other_first, other_second) |>
+      select(participant, phase, other_difference = difference)
+
+    interaction_scores <- rows |>
       transmute(participant, phase, level = .data[[effect]],
                 other_level = .data[[other]], amplitude) |>
       pivot_wider(names_from = level, values_from = amplitude) |>
@@ -61,13 +81,16 @@ scores <- pmap_dfr(EFFECTS, \(model, effect, first, second, other, other_first, 
       select(participant, phase, other_level, difference) |>
       pivot_wider(names_from = other_level, values_from = difference) |>
       transmute(participant, phase,
-                interaction = .data[[other_first]] - .data[[other_second]]) |>
-      right_join(main, by = c("participant", "phase"))
+                interaction = .data[[other_first]] - .data[[other_second]])
+
+    main <- main |>
+      left_join(other_scores, by = c("participant", "phase")) |>
+      left_join(interaction_scores, by = c("participant", "phase"))
   }
 
-  factors <- intersect(WITHIN_ORDER, c(effect, other))
-  mutate(main, model, effect, interaction_term = paste(factors, collapse = ":"),
-         .before = 1)
+  mutate(main, model = .env$model, effect = .env$effect,
+         other = as.character(.env$other),
+         interaction_term = as.character(.env$interaction), .before = 1)
 })
 
 # helper functions
@@ -89,11 +112,13 @@ permutation_p <- function(observed, permuted) {
   (sum(abs(permuted) >= abs(observed)) + 1) / (length(permuted) + 1)
 }
 
+flip <- function(x) x * sample(c(-1, 1), length(x), replace = TRUE)
+
 # is the score different from zero? the sign of each participant's score is
 # flipped at random
 test_zero <- function(x) {
   observed <- t_one(x)
-  permuted <- replicate(PERMUTATIONS, t_one(x * sample(c(-1, 1), length(x), replace = TRUE)))
+  permuted <- replicate(PERMUTATIONS, t_one(flip(x)))
   tibble(estimate = mean(x), t = observed, df = length(x) - 1,
          p_parametric = 2 * pt(-abs(observed), length(x) - 1),
          p_permutation = permutation_p(observed, permuted))
@@ -102,8 +127,7 @@ test_zero <- function(x) {
 # the same question for both groups together, with the groups weighted equally
 test_both <- function(x, group) {
   observed <- t_both(x, group)
-  permuted <- replicate(PERMUTATIONS,
-                        t_both(x * sample(c(-1, 1), length(x), replace = TRUE), group))
+  permuted <- replicate(PERMUTATIONS, t_both(flip(x), group))
   tibble(estimate = mean(tapply(x, group, mean)), t = observed, df = length(x) - 2,
          p_parametric = 2 * pt(-abs(observed), length(x) - 2),
          p_permutation = permutation_p(observed, permuted))
@@ -151,13 +175,10 @@ test_score <- function(data, score) {
 # tests
 set.seed(SEED)
 
-SCORES <- c("difference", "interaction", "mean")
-
 results <- scores |>
-  group_by(model, effect, interaction_term) |>
+  group_by(model, effect, other, interaction_term) |>
   group_modify(\(data, key) {
-    available <- SCORES[map_lgl(SCORES, \(score) score %in% names(data) &&
-                                  !all(is.na(data[[score]])))]
+    available <- SCORES[map_lgl(SCORES, \(score) !all(is.na(data[[score]])))]
     map_dfr(available, \(score) test_score(data, score))
   }) |>
   ungroup() |>
@@ -169,23 +190,21 @@ results <- scores |>
 # the same effect in the anova, for comparison
 results <- results |>
   mutate(anova_effect = case_when(
-    score == "difference"  ~ sprintf(ANOVA_TERMS[test], effect),
-    score == "interaction" ~ sprintf(ANOVA_TERMS[test], interaction_term),
-    score == "mean"        ~ unname(MEAN_TERMS[test]))) |>
+    score == "difference"       ~ sprintf(ANOVA_TERMS[test], effect),
+    score == "other_difference" ~ sprintf(ANOVA_TERMS[test], other),
+    score == "interaction"      ~ sprintf(ANOVA_TERMS[test], interaction_term),
+    score == "mean"             ~ unname(MEAN_TERMS[test]))) |>
   left_join(select(anova, model, anova_effect = effect, anova_F = F, anova_p = p),
             by = c("model", "anova_effect")) |>
   mutate(across(c(estimate, t), \(x) round(x, 2)),
-         across(c(p_parametric, p_permutation), \(x) round(x, 4)))
+         across(c(p_parametric, p_permutation), \(x) round(x, 4)),
+         permutations = PERMUTATIONS)
 
 # results
-cat("\npermutation tests on difference scores\n")
-print(filter(results, score == "difference"), n = Inf, width = Inf)
-
-cat("\npermutation tests on the interaction scores\n")
-print(filter(results, score == "interaction"), n = Inf, width = Inf)
-
-cat("\npermutation tests on the mean of the two conditions\n")
-print(filter(results, score == "mean"), n = Inf, width = Inf)
+for (score_name in SCORES) {
+  cat("\npermutation tests,", score_name, "\n")
+  print(filter(results, score == score_name), n = Inf, width = Inf)
+}
 
 # save
 write_csv(results, path(ANOVA_DIR, "permutation_tests.csv"))
