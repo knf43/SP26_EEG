@@ -64,4 +64,4 @@ The ERP analysis excluded `r np(beh) - np(erp)` participants because fewer than 
 
 The **[SP26 EEG Study Results](eeg_study_results.html)** page reports reaction times, response accuracy, and event-related potentials (ERPs) at pre-test, at post-test, and across training.
 
-The **[Cluster tests](cluster_tests.html)** page reports exploratory cluster-based permutation tests of the ERPs over all electrodes and time points.
+The **[Cluster tests](cluster_tests.html)** page reports cluster-based permutation tests of the same ERP comparisons over all electrodes, in the time window of each component.
